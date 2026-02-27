@@ -101,9 +101,10 @@ function MainTabs() {
   );
 }
 
-export default function AppNavigator() {
+export default function AppNavigator({ needsProfileSetup = false }) {
   return (
     <Stack.Navigator
+      initialRouteName={needsProfileSetup ? "ProfileSetup" : "MainTabs"}
       screenOptions={{
         headerTitleAlign: "left",
         headerStyle: { backgroundColor: COLORS.primary },
@@ -113,6 +114,16 @@ export default function AppNavigator() {
       }}
     >
       <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="ProfileSetup"
+        component={ProfileScreen}
+        initialParams={{ forceOnboarding: true }}
+        options={{
+          title: "Complete Profile",
+          headerBackVisible: false,
+          gestureEnabled: false,
+        }}
+      />
       <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );

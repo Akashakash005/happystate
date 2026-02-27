@@ -8,22 +8,83 @@ import {
 } from 'firebase/auth';
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
+import { DB_SCHEMA } from '../constants/dataSchema';
 
 const AuthContext = createContext(null);
 
+function isEmailExistsError(error) {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || '').toUpperCase();
+  return code.includes('email-already-in-use') || message.includes('EMAIL_EXISTS');
+}
+
 async function upsertProfile(firebaseUser, extraFields = {}) {
-  const ref = doc(db, 'users', firebaseUser.uid);
+  const ref = doc(db, DB_SCHEMA.users, firebaseUser.uid);
   await setDoc(
     ref,
     {
       uid: firebaseUser.uid,
       email: firebaseUser.email || '',
       displayName: extraFields.displayName || firebaseUser.displayName || '',
+      profileCompleted: false,
       updatedAt: serverTimestamp(),
       ...extraFields,
     },
     { merge: true }
   );
+}
+
+async function ensureUserDataScaffold(firebaseUser) {
+  const uid = firebaseUser.uid;
+  const profileRef = doc(
+    db,
+    DB_SCHEMA.users,
+    uid,
+    DB_SCHEMA.appData,
+    DB_SCHEMA.docs.profile
+  );
+  const moodEntriesRef = doc(
+    db,
+    DB_SCHEMA.users,
+    uid,
+    DB_SCHEMA.appData,
+    DB_SCHEMA.docs.moodEntries
+  );
+  const journalSessionsRef = doc(
+    db,
+    DB_SCHEMA.users,
+    uid,
+    DB_SCHEMA.appData,
+    DB_SCHEMA.docs.journalSessions
+  );
+
+  await Promise.all([
+    setDoc(
+      profileRef,
+      {
+        name: firebaseUser.displayName || '',
+        email: firebaseUser.email || '',
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ),
+    setDoc(
+      moodEntriesRef,
+      {
+        entries: [],
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ),
+    setDoc(
+      journalSessionsRef,
+      {
+        sessions: [],
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ),
+  ]);
 }
 
 export function AuthProvider({ children }) {
@@ -39,12 +100,14 @@ export function AuthProvider({ children }) {
 
         if (firebaseUser) {
           await upsertProfile(firebaseUser, { lastLoginAt: serverTimestamp() });
-          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          await ensureUserDataScaffold(firebaseUser);
+          const snap = await getDoc(doc(db, DB_SCHEMA.users, firebaseUser.uid));
           setProfile(snap.exists() ? snap.data() : null);
         } else {
           setProfile(null);
         }
-      } catch {
+      } catch (error) {
+        console.warn('Auth profile bootstrap failed:', error?.message || error);
         setProfile(null);
       } finally {
         setInitializing(false);
@@ -61,7 +124,25 @@ export function AuthProvider({ children }) {
       await upsertProfile(cred.user, {
         displayName: (displayName || '').trim(),
         createdAt: serverTimestamp(),
+        profileCompleted: false,
       });
+      await ensureUserDataScaffold(cred.user);
+    } catch (error) {
+      if (isEmailExistsError(error)) {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+          await upsertProfile(cred.user, {
+            displayName: (displayName || '').trim() || cred.user.displayName || '',
+            profileCompleted: false,
+            updatedAt: serverTimestamp(),
+          });
+          await ensureUserDataScaffold(cred.user);
+          return;
+        } catch (loginError) {
+          throw loginError;
+        }
+      }
+      throw error;
     } finally {
       setAuthLoading(false);
     }
@@ -102,7 +183,7 @@ export function AuthProvider({ children }) {
       const uid = currentUser.uid;
       await deleteUser(currentUser);
       try {
-        await deleteDoc(doc(db, 'users', uid));
+        await deleteDoc(doc(db, DB_SCHEMA.users, uid));
       } catch {
         // Best-effort cleanup. Account deletion succeeded even if profile doc cleanup fails.
       }
@@ -121,6 +202,14 @@ export function AuthProvider({ children }) {
       login,
       logout,
       deleteAccount,
+      refreshProfile: async () => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return null;
+        const snap = await getDoc(doc(db, DB_SCHEMA.users, uid));
+        const next = snap.exists() ? snap.data() : null;
+        setProfile(next);
+        return next;
+      },
     }),
     [user, profile, initializing, authLoading]
   );

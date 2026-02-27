@@ -11,7 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { COLORS } from "../constants/colors";
-import { analyzeJournalEntry } from "../services/aiJournalService";
+import { analyzeJournalEntryWithContext } from "../services/aiJournalService";
 import {
   addJournalExchange,
   createJournalSession,
@@ -92,7 +92,12 @@ export default function JournalChatScreen() {
       );
 
       try {
-        const analysis = await analyzeJournalEntry(text);
+        const history = (activeSession.messages || []).slice(-8).map((message) => ({
+          role: message.role,
+          text: message.text,
+        }));
+
+        const analysis = await analyzeJournalEntryWithContext(text, { history });
         const result = await addJournalExchange({
           sessionId: activeSession.id,
           userText: text,

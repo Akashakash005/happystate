@@ -1,4 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from './firebase';
+import { DB_SCHEMA } from '../constants/dataSchema';
 
 const PROFILE_KEY = '@happy_state_profile_v1';
 
@@ -31,6 +34,20 @@ export const DEFAULT_PROFILE = {
   showProfessionalSupportSuggestions: true,
   updatedAt: null,
 };
+
+export function hasRequiredPersonalDetails(profileData = {}) {
+  const p = { ...DEFAULT_PROFILE, ...(profileData || {}) };
+  const required = [
+    String(p.name || '').trim(),
+    String(p.age || '').trim(),
+    String(p.profession || '').trim(),
+    String(p.weight || '').trim(),
+    String(p.height || '').trim(),
+    String(p.gender || '').trim(),
+    String(p.about || '').trim(),
+  ];
+  return required.every(Boolean);
+}
 
 function validateOption(key, value) {
   return OPTION_SETS[key].includes(value);
@@ -120,13 +137,35 @@ export function validateProfile(profileData = {}) {
 }
 
 export async function getProfile() {
+  const localProfile = await (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(PROFILE_KEY);
+      if (!raw) return DEFAULT_PROFILE;
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_PROFILE, ...(parsed || {}) };
+    } catch {
+      return DEFAULT_PROFILE;
+    }
+  })();
+
+  const uid = auth.currentUser?.uid;
+  if (!uid) return localProfile;
+
   try {
-    const raw = await AsyncStorage.getItem(PROFILE_KEY);
-    if (!raw) return DEFAULT_PROFILE;
-    const parsed = JSON.parse(raw);
-    return { ...DEFAULT_PROFILE, ...(parsed || {}) };
+    const ref = doc(db, DB_SCHEMA.users, uid, DB_SCHEMA.appData, DB_SCHEMA.docs.profile);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      if (localProfile && localProfile !== DEFAULT_PROFILE) {
+        await setDoc(ref, { ...localProfile }, { merge: true });
+      }
+      return localProfile;
+    }
+
+    const remote = { ...DEFAULT_PROFILE, ...(snap.data() || {}) };
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(remote));
+    return remote;
   } catch {
-    return DEFAULT_PROFILE;
+    return localProfile;
   }
 }
 
@@ -137,6 +176,26 @@ export async function saveProfile(profileData) {
   }
 
   await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(check.data));
+
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    try {
+      const ref = doc(db, DB_SCHEMA.users, uid, DB_SCHEMA.appData, DB_SCHEMA.docs.profile);
+      await setDoc(ref, { ...check.data }, { merge: true });
+      await setDoc(
+        doc(db, DB_SCHEMA.users, uid),
+        {
+          displayName: check.data.name || '',
+          profileCompleted: hasRequiredPersonalDetails(check.data),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch {
+      // Keep local save successful even if remote sync temporarily fails.
+    }
+  }
+
   return check.data;
 }
 

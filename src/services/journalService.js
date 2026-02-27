@@ -1,4 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from './firebase';
+import { DB_SCHEMA } from '../constants/dataSchema';
 
 const STORAGE_KEY = '@happy_state_journal_sessions_v1';
 
@@ -52,22 +55,59 @@ function sortSessions(sessions) {
 }
 
 export async function getJournalSessions() {
+  const localSessions = await (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      const normalized = Array.isArray(parsed)
+        ? parsed.map(normalizeSession).filter(Boolean)
+        : [];
+      return sortSessions(normalized);
+    } catch {
+      return [];
+    }
+  })();
+
+  const uid = auth.currentUser?.uid;
+  if (!uid) return localSessions;
+
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    const normalized = Array.isArray(parsed)
-      ? parsed.map(normalizeSession).filter(Boolean)
+    const ref = doc(db, DB_SCHEMA.users, uid, DB_SCHEMA.appData, DB_SCHEMA.docs.journalSessions);
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      if (localSessions.length) {
+        await setDoc(ref, { sessions: localSessions, updatedAt: new Date().toISOString() }, { merge: true });
+      }
+      return localSessions;
+    }
+
+    const remoteSessions = Array.isArray(snap.data()?.sessions)
+      ? snap.data().sessions.map(normalizeSession).filter(Boolean)
       : [];
-    return sortSessions(normalized);
+    const sorted = sortSessions(remoteSessions);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
+    return sorted;
   } catch {
-    return [];
+    return localSessions;
   }
 }
 
 export async function saveJournalSessions(sessions) {
   const normalized = sortSessions((sessions || []).map(normalizeSession).filter(Boolean));
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    try {
+      const ref = doc(db, DB_SCHEMA.users, uid, DB_SCHEMA.appData, DB_SCHEMA.docs.journalSessions);
+      await setDoc(ref, { sessions: normalized, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch {
+      // Keep local save successful even if remote sync temporarily fails.
+    }
+  }
+
   return normalized;
 }
 

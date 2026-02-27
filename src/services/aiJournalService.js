@@ -100,10 +100,16 @@ function fallbackExtractNames(text) {
 }
 
 export async function analyzeJournalEntry(entryText) {
+  return analyzeJournalEntryWithContext(entryText, { history: [] });
+}
+
+export async function analyzeJournalEntryWithContext(entryText, options = {}) {
+  const history = Array.isArray(options.history) ? options.history : [];
+
   try {
     const content = await openAIChat({
       systemPrompt: JOURNAL_ANALYSIS_SYSTEM_PROMPT,
-      userPrompt: buildJournalUserPrompt({ entryText }),
+      userPrompt: buildJournalUserPrompt({ entryText, history }),
       temperature: 0.4,
     });
 

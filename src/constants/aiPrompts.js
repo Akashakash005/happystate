@@ -13,8 +13,26 @@ Do not produce any labels, just return JSON:
   "suggestedQuestions": ["...", "..."]
 }`;
 
-export function buildJournalUserPrompt({ entryText }) {
-  return `Journal entry:\n${entryText}`;
+export function buildJournalUserPrompt({ entryText, history = [] }) {
+  const compactHistory = (history || [])
+    .slice(-8)
+    .map((message) => {
+      const role = message?.role === 'assistant' ? 'assistant' : 'user';
+      const text = String(message?.text || '').trim().replace(/\s+/g, ' ');
+      return text ? `${role}: ${text}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  if (!compactHistory) {
+    return `Journal entry:\n${entryText}`;
+  }
+
+  return `Recent conversation context:
+${compactHistory}
+
+Latest user journal entry:
+${entryText}`;
 }
 
 export const NAME_EXTRACTION_SYSTEM_PROMPT = `Given this text, list all names of people in the text as an array.

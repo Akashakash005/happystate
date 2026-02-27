@@ -5,7 +5,7 @@ import LoadingScreen from '../screens/Auth/LoadingScreen';
 import { useAuth } from '../context/AuthContext';
 
 export default function RootNavigator() {
-  const { user, initializing } = useAuth();
+  const { user, profile, initializing } = useAuth();
 
   if (initializing) {
     return <LoadingScreen />;
@@ -15,5 +15,6 @@ export default function RootNavigator() {
     return <AuthNavigator />;
   }
 
-  return <AppNavigator />;
+  const needsProfileSetup = !profile?.profileCompleted;
+  return <AppNavigator needsProfileSetup={needsProfileSetup} />;
 }

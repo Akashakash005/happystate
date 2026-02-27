@@ -15,7 +15,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { COLORS } from "../constants/colors";
-import { getProfile, saveProfile } from "../services/profileService";
+import {
+  getProfile,
+  hasRequiredPersonalDetails,
+  saveProfile,
+} from "../services/profileService";
 import { useAuth } from "../context/AuthContext";
 
 const TABS = [
@@ -85,8 +89,9 @@ function FieldLabel({ children, hint }) {
   );
 }
 
-export default function ProfileScreen() {
-  const { user, profile: authProfile, logout, deleteAccount } = useAuth();
+export default function ProfileScreen({ navigation, route }) {
+  const { user, profile: authProfile, logout, deleteAccount, refreshProfile } = useAuth();
+  const forceOnboarding = Boolean(route?.params?.forceOnboarding);
   const [form, setForm] = useState(null);
   const [activeTab, setActiveTab] = useState("general");
   const [saving, setSaving] = useState(false);
@@ -105,6 +110,7 @@ export default function ProfileScreen() {
     destructive: false,
     onConfirm: null,
   });
+  const [genderModalVisible, setGenderModalVisible] = useState(false);
 
   const bannerOpacity = useRef(new Animated.Value(0)).current;
   const bannerTranslate = useRef(new Animated.Value(-8)).current;
@@ -129,6 +135,17 @@ export default function ProfileScreen() {
       bannerTranslate.stopAnimation();
     };
   }, [bannerOpacity, bannerTranslate]);
+
+  useEffect(() => {
+    if (!forceOnboarding) return;
+    setActiveTab("general");
+    setSectionEdit({
+      general: true,
+      emotional: false,
+      ai: false,
+      privacy: false,
+    });
+  }, [forceOnboarding]);
 
   const setField = (key, value) => {
     setForm((prev) => ({ ...(prev || {}), [key]: value }));
@@ -178,6 +195,25 @@ export default function ProfileScreen() {
       setForm(saved);
       setSectionEdit((prev) => ({ ...prev, [sectionKey]: false }));
       showSaveSuccess();
+
+      if (forceOnboarding && sectionKey === "general") {
+        if (!hasRequiredPersonalDetails(saved)) {
+          Alert.alert(
+            "Complete required details",
+            "Please fill name, age, profession, weight, height, gender, and about before continuing.",
+          );
+          setSectionEdit((prev) => ({ ...prev, general: true }));
+          return;
+        }
+
+        try {
+          await refreshProfile?.();
+        } catch {
+          // Continue navigation even if profile refresh fails.
+        }
+
+        navigation.replace("MainTabs");
+      }
     } catch (error) {
       Alert.alert(
         "Validation error",
@@ -259,13 +295,7 @@ export default function ProfileScreen() {
 
   const onSelectGender = (editable) => {
     if (!editable) return;
-    const options = ["Female", "Male", "Non-binary", "Prefer not to say"];
-    const actions = options.map((option) => ({
-      text: option,
-      onPress: () => setField("gender", option),
-    }));
-    actions.push({ text: "Cancel", style: "cancel" });
-    Alert.alert("Select gender", "Choose one option", actions);
+    setGenderModalVisible(true);
   };
 
   const renderSectionHeader = (title, description, sectionKey) => (
@@ -274,20 +304,22 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>{title}</Text>
         <Text style={styles.sectionDesc}>{description}</Text>
       </View>
-      <Pressable
-        style={styles.editIconBtn}
-        onPress={() => openSectionEdit(sectionKey)}
-      >
-        <Ionicons
-          name={
-            sectionEdit[sectionKey]
-              ? "checkmark-done-outline"
-              : "create-outline"
-          }
-          size={18}
-          color={COLORS.primary}
-        />
-      </Pressable>
+      {!forceOnboarding ? (
+        <Pressable
+          style={styles.editIconBtn}
+          onPress={() => openSectionEdit(sectionKey)}
+        >
+          <Ionicons
+            name={
+              sectionEdit[sectionKey]
+                ? "checkmark-done-outline"
+                : "create-outline"
+            }
+            size={18}
+            color={COLORS.primary}
+          />
+        </Pressable>
+      ) : null}
     </View>
   );
 
@@ -309,13 +341,15 @@ export default function ProfileScreen() {
   const renderTabContent = () => {
     if (!form) return null;
 
-    if (activeTab === "general") {
+    if (activeTab === "general" || forceOnboarding) {
       const editable = sectionEdit.general;
       return (
         <LinearGradient {...CARD_GRADIENT} style={styles.card}>
           {renderSectionHeader(
-            "General",
-            "Used for profile context in personalized AI summaries.",
+            forceOnboarding ? "Personal Details" : "General",
+            forceOnboarding
+              ? "Complete your personal details to start using HappyState."
+              : "Used for profile context in personalized AI summaries.",
             "general",
           )}
 
@@ -402,7 +436,19 @@ export default function ProfileScreen() {
             textAlignVertical="top"
           />
 
-          {renderSaveButton("general")}
+          <Pressable
+            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+            disabled={saving || (forceOnboarding && !sectionEdit.general)}
+            onPress={() => onSaveSection("general")}
+          >
+            <Text style={styles.saveBtnText}>
+              {saving
+                ? "Saving..."
+                : forceOnboarding
+                  ? "Save & Continue"
+                  : "Save Changes"}
+            </Text>
+          </Pressable>
         </LinearGradient>
       );
     }
@@ -585,32 +631,34 @@ export default function ProfileScreen() {
           </Text>
         </LinearGradient>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabRow}
-        >
-          {TABS.map((tab) => {
-            const active = tab.key === activeTab;
-            return (
-              <Pressable
-                key={tab.key}
-                style={styles.tabBtn}
-                onPress={() => setActiveTab(tab.key)}
-              >
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-                <View
-                  style={[
-                    styles.tabUnderline,
-                    active && styles.tabUnderlineActive,
-                  ]}
-                />
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        {!forceOnboarding ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabRow}
+          >
+            {TABS.map((tab) => {
+              const active = tab.key === activeTab;
+              return (
+                <Pressable
+                  key={tab.key}
+                  style={styles.tabBtn}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                    {tab.label}
+                  </Text>
+                  <View
+                    style={[
+                      styles.tabUnderline,
+                      active && styles.tabUnderlineActive,
+                    ]}
+                  />
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
 
         {renderTabContent()}
       </ScrollView>
@@ -660,6 +708,42 @@ export default function ProfileScreen() {
                 </Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={genderModalVisible}
+        animationType="fade"
+        onRequestClose={() => setGenderModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Select gender</Text>
+            <Text style={styles.modalMessage}>Choose one option</Text>
+
+            {["Female", "Male", "Non-binary", "Prefer not to say"].map(
+              (option) => (
+                <Pressable
+                  key={option}
+                  style={styles.genderOptionBtn}
+                  onPress={() => {
+                    setField("gender", option);
+                    setGenderModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.genderOptionText}>{option}</Text>
+                </Pressable>
+              ),
+            )}
+
+            <Pressable
+              style={styles.modalCancelFullBtn}
+              onPress={() => setGenderModalVisible(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -919,6 +1003,30 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   modalCancelText: {
+    color: COLORS.text,
+    fontWeight: "700",
+  },
+  modalCancelFullBtn: {
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  genderOptionBtn: {
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  genderOptionText: {
     color: COLORS.text,
     fontWeight: "700",
   },
