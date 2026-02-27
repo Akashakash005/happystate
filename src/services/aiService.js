@@ -33,6 +33,7 @@ function compactUserProfile(profile = {}) {
     displayName: (profile.displayName || '').slice(0, 50),
     ageGroup: profile.ageGroup || '',
     timezone: profile.timezone || '',
+    personalDetails: profile.personalDetails || {},
     preferences: profile.preferences || {},
   };
 }
@@ -195,6 +196,16 @@ export async function generateInsight({
 
   const compactProfile = compactUserProfile({
     ...userProfile,
+    displayName: savedProfile.name || userProfile?.displayName || '',
+    personalDetails: {
+      name: savedProfile.name || '',
+      age: savedProfile.age || '',
+      profession: savedProfile.profession || '',
+      weight: savedProfile.weight || '',
+      height: savedProfile.height || '',
+      gender: savedProfile.gender || '',
+      about: savedProfile.about || '',
+    },
     preferences: {
       stressLevel: savedProfile.stressLevel,
       sleepAverage: savedProfile.sleepAverage,

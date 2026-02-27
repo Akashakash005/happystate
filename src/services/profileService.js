@@ -9,10 +9,17 @@ const OPTION_SETS = {
   aiTone: ['Gentle', 'Direct', 'Motivational'],
   suggestionDepth: ['Quick', 'Detailed'],
   defaultInsightRange: ['Day', 'Week', 'Month', 'Year'],
+  gender: ['Female', 'Male', 'Non-binary', 'Prefer not to say'],
 };
 
 export const DEFAULT_PROFILE = {
   name: 'You',
+  age: '',
+  profession: '',
+  weight: '',
+  height: '',
+  gender: 'Prefer not to say',
+  about: '',
   stressLevel: 'Medium',
   sleepAverage: '7',
   energyPattern: 'Mixed',
@@ -33,6 +40,14 @@ function normalizeSleepAverage(value) {
   const num = Number(value);
   if (Number.isNaN(num)) return null;
   if (num < 0 || num > 24) return null;
+  return Number(num.toFixed(1)).toString();
+}
+
+function normalizeOptionalNumber(value, { min, max }) {
+  if (value === '' || value === null || typeof value === 'undefined') return '';
+  const num = Number(value);
+  if (Number.isNaN(num)) return null;
+  if (num < min || num > max) return null;
   return Number(num.toFixed(1)).toString();
 }
 
@@ -66,12 +81,36 @@ export function validateProfile(profileData = {}) {
   if (!validateOption('defaultInsightRange', next.defaultInsightRange)) {
     return { isValid: false, message: 'Invalid Default Insight Range value.' };
   }
+  if (!validateOption('gender', next.gender)) {
+    return { isValid: false, message: 'Invalid Gender value.' };
+  }
+
+  const age = normalizeOptionalNumber(next.age, { min: 1, max: 120 });
+  if (age === null) {
+    return { isValid: false, message: 'Age must be between 1 and 120.' };
+  }
+
+  const weight = normalizeOptionalNumber(next.weight, { min: 1, max: 500 });
+  if (weight === null) {
+    return { isValid: false, message: 'Weight must be between 1 and 500.' };
+  }
+
+  const height = normalizeOptionalNumber(next.height, { min: 1, max: 300 });
+  if (height === null) {
+    return { isValid: false, message: 'Height must be between 1 and 300.' };
+  }
 
   return {
     isValid: true,
     data: {
       ...next,
       name: String(next.name).trim(),
+      age,
+      profession: String(next.profession || '').trim(),
+      weight,
+      height,
+      gender: next.gender,
+      about: String(next.about || '').trim().slice(0, 240),
       sleepAverage,
       allowLongTermAnalysis: Boolean(next.allowLongTermAnalysis),
       showProfessionalSupportSuggestions: Boolean(next.showProfessionalSupportSuggestions),

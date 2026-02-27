@@ -36,9 +36,10 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <LinearGradient
-      colors={["#8298fa", "#E3E8FF"]}
-      start={{ x: 0, y: 1 }}
-      end={{ x: 0, y: 0 }}
+      colors={["#0033ff", "#3e58c1", "#0e1b58"]}
+      locations={[0, 0.5, 1]}
+      start={{ x: 1, y: 1 }} // bottom-right
+      end={{ x: 0, y: 0 }} // top-left
       style={styles.gradientBackground}
     >
       <SafeAreaView style={styles.safeArea}>
@@ -102,9 +103,10 @@ export default function LoginScreen({ navigation }) {
                 disabled={authLoading}
               >
                 <LinearGradient
-                  colors={["#8298fa", "#E3E8FF"]}
-                  start={{ x: 0, y: 1 }}
-                  end={{ x: 0, y: 0 }}
+                  colors={["#0033ff", "#3e58c1", "#0e1b58"]}
+                  locations={[0, 0.5, 1]}
+                  start={{ x: 1, y: 1 }} // bottom-right
+                  end={{ x: 0, y: 0 }} // top-left
                   style={styles.signInButtonGradient}
                 >
                   <Text style={styles.signInButtonText}>

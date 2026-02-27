@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
 const AuthContext = createContext(null);
@@ -77,8 +78,34 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     setAuthLoading(true);
+    // Optimistic local logout so UI reliably exits authenticated flow.
+    setUser(null);
+    setProfile(null);
+    setInitializing(false);
     try {
       await signOut(auth);
+    } catch {
+      // Keep local logout state even if remote sign-out fails intermittently.
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('No authenticated user found.');
+    }
+
+    setAuthLoading(true);
+    try {
+      const uid = currentUser.uid;
+      await deleteUser(currentUser);
+      try {
+        await deleteDoc(doc(db, 'users', uid));
+      } catch {
+        // Best-effort cleanup. Account deletion succeeded even if profile doc cleanup fails.
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -93,6 +120,7 @@ export function AuthProvider({ children }) {
       signup,
       login,
       logout,
+      deleteAccount,
     }),
     [user, profile, initializing, authLoading]
   );
@@ -107,3 +135,4 @@ export function useAuth() {
   }
   return ctx;
 }
+
