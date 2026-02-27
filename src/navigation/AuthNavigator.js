@@ -16,7 +16,14 @@ export default function AuthNavigator() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'Welcome Back' }} />
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{
+          headerShown: false,
+          title: 'Welcome Back',
+        }}
+      />
       <Stack.Screen name="Signup" component={SignupScreen} options={{ title: 'Create Account' }} />
     </Stack.Navigator>
   );

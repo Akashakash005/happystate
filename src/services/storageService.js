@@ -2,49 +2,145 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { toDateKey } from '../utils/date';
 
 const STORAGE_KEY = '@happy_state_entries_v1';
+const SLOT_HOURS = { morning: 9, afternoon: 14, evening: 19, night: 23 };
+const SLOT_ORDER = { morning: 1, afternoon: 2, evening: 3, night: 4 };
+
+function getSlotByHour(hour) {
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 22) return 'evening';
+  return 'night';
+}
+
+function toISOFromDateSlot(date, slot) {
+  const [y, m, d] = String(date).split('-').map(Number);
+  const hour = SLOT_HOURS[slot] ?? 12;
+  return new Date(y, (m || 1) - 1, d || 1, hour, 0, 0).toISOString();
+}
+
+function clampMood(value) {
+  const mood = Number(value);
+  if (Number.isNaN(mood)) return 3;
+  return Math.max(1, Math.min(5, mood));
+}
+
+function toScore(mood) {
+  return Number((((mood || 3) - 3) / 2).toFixed(2));
+}
+
+function normalizeEntry(entry) {
+  if (!entry) return null;
+
+  const fallbackISO = entry.dateISO || entry.actualLoggedAt || new Date().toISOString();
+  const fallbackDate = toDateKey(fallbackISO);
+  const fallbackSlot = getSlotByHour(new Date(fallbackISO).getHours());
+
+  const mood = clampMood(entry.mood);
+  const date = entry.date || fallbackDate;
+  const slot = entry.slot || fallbackSlot;
+  const dateISO = entry.dateISO || toISOFromDateSlot(date, slot);
+
+  return {
+    id: entry.id || `${date}_${slot}`,
+    date,
+    slot,
+    mood,
+    score: typeof entry.score === 'number' ? entry.score : toScore(mood),
+    note: entry.note || '',
+    dateISO,
+    actualLoggedAt: entry.actualLoggedAt || entry.updatedAt || new Date().toISOString(),
+    isBackfilled: typeof entry.isBackfilled === 'boolean' ? entry.isBackfilled : date !== toDateKey(new Date()),
+    createdAt: entry.createdAt || new Date().toISOString(),
+    updatedAt: entry.updatedAt || new Date().toISOString(),
+  };
+}
+
+function sortEntries(list) {
+  return [...list].sort((a, b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    return (SLOT_ORDER[b.slot] || 0) - (SLOT_ORDER[a.slot] || 0);
+  });
+}
 
 export async function getEntries() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const normalized = Array.isArray(parsed)
+      ? parsed.map(normalizeEntry).filter(Boolean)
+      : [];
+    return sortEntries(normalized);
   } catch {
     return [];
   }
 }
 
 export async function saveEntries(entries) {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  return entries;
+  const normalized = sortEntries((entries || []).map(normalizeEntry).filter(Boolean));
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
 }
 
-export async function upsertTodayEntry({ mood, note }) {
-  const now = new Date();
-  const todayKey = toDateKey(now);
+export async function upsertEntry({
+  date,
+  slot,
+  mood,
+  note,
+  actualLoggedAt,
+  isBackfilled,
+}) {
+  const safeDate = date || toDateKey(new Date());
+  const safeSlot = slot || 'evening';
+  const safeMood = clampMood(mood);
+  const nowISO = new Date().toISOString();
 
   const existing = await getEntries();
-  const idx = existing.findIndex((item) => toDateKey(item.dateISO) === todayKey);
+  const idx = existing.findIndex((item) => item.date === safeDate && item.slot === safeSlot);
+
+  const entryPayload = {
+    id: `${safeDate}_${safeSlot}`,
+    date: safeDate,
+    slot: safeSlot,
+    mood: safeMood,
+    score: toScore(safeMood),
+    note: note || '',
+    dateISO: toISOFromDateSlot(safeDate, safeSlot),
+    actualLoggedAt: actualLoggedAt || nowISO,
+    isBackfilled: typeof isBackfilled === 'boolean' ? isBackfilled : safeDate !== toDateKey(new Date()),
+    updatedAt: nowISO,
+  };
 
   if (idx >= 0) {
     existing[idx] = {
       ...existing[idx],
-      mood,
-      note,
-      updatedAt: now.toISOString(),
+      ...entryPayload,
     };
   } else {
-    existing.unshift({
-      id: `${Date.now()}`,
-      dateISO: now.toISOString(),
-      mood,
-      note,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
+    existing.push({
+      ...entryPayload,
+      createdAt: nowISO,
     });
   }
 
-  existing.sort((a, b) => new Date(b.dateISO) - new Date(a.dateISO));
-  await saveEntries(existing);
-  return existing;
+  return saveEntries(existing);
+}
+
+export async function upsertTodayEntry({ mood, note }) {
+  return upsertEntry({
+    date: toDateKey(new Date()),
+    slot: 'evening',
+    mood,
+    note,
+    isBackfilled: false,
+  });
+}
+
+export async function deleteEntry({ date, slot, id }) {
+  const existing = await getEntries();
+  const filtered = existing.filter((item) => {
+    if (id) return item.id !== id;
+    return !(item.date === date && item.slot === slot);
+  });
+  return saveEntries(filtered);
 }

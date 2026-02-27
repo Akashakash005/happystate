@@ -6,6 +6,9 @@ import { COLORS } from '../constants/colors';
 
 export default function MoodCard({ entry }) {
   const meta = getMoodMeta(entry.mood);
+  const slotLabel = entry.slot
+    ? `${entry.slot.charAt(0).toUpperCase()}${entry.slot.slice(1)}`
+    : null;
 
   return (
     <View style={styles.card}>
@@ -15,6 +18,7 @@ export default function MoodCard({ entry }) {
           <Text style={styles.badgeText}>{meta.label}</Text>
         </View>
       </View>
+      {slotLabel ? <Text style={styles.slot}>{slotLabel}</Text> : null}
       {entry.note ? <Text style={styles.note}>{entry.note}</Text> : null}
     </View>
   );
@@ -33,5 +37,6 @@ const styles = StyleSheet.create({
   date: { color: COLORS.text, fontWeight: '600' },
   badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   badgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  slot: { marginTop: 6, color: COLORS.textMuted, fontWeight: '600' },
   note: { marginTop: 8, color: COLORS.textMuted, lineHeight: 20 },
 });
