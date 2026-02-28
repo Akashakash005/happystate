@@ -64,6 +64,12 @@ export default function JournalChatScreen() {
   );
 
   const messages = activeSession?.messages || [];
+  const trendLabel = (session) => {
+    const value = String(session?.moodTrend || "stable");
+    if (value === "improving") return "Mood: Improving";
+    if (value === "declining") return "Mood: Declining";
+    return "Mood: Stable";
+  };
 
   const submitText = useCallback(
     async (inputText) => {
@@ -107,8 +113,13 @@ export default function JournalChatScreen() {
         setSessions(result.sessions);
         setActiveSessionId(result.sessionId);
 
-        if (analysis.suggestedQuestions?.length) {
-          setSuggestedPrompts(analysis.suggestedQuestions);
+        const nextPrompt =
+          String(analysis.followUpQuestion || "").trim() ||
+          (Array.isArray(analysis.suggestedQuestions)
+            ? String(analysis.suggestedQuestions[0] || "").trim()
+            : "");
+        if (nextPrompt) {
+          setSuggestedPrompts([nextPrompt]);
         }
       } finally {
         setLoading(false);
@@ -289,6 +300,17 @@ export default function JournalChatScreen() {
                     <Text style={styles.sessionMeta}>
                       {formatLongDate(session.updatedAt)}
                     </Text>
+                    <Text style={styles.sessionTrend}>{trendLabel(session)}</Text>
+                    {session.summary ? (
+                      <Text style={styles.sessionSummary} numberOfLines={1}>
+                        {session.summary}
+                      </Text>
+                    ) : null}
+                    {session.tags?.length ? (
+                      <Text style={styles.sessionTags}>
+                        {session.tags.slice(0, 3).join("  •  ")}
+                      </Text>
+                    ) : null}
                   </Pressable>
                 );
               })}
@@ -536,4 +558,21 @@ const styles = StyleSheet.create({
   },
   sessionTitle: { color: COLORS.text, fontWeight: "700" },
   sessionMeta: { color: COLORS.textMuted, marginTop: 2, fontSize: 12 },
+  sessionTrend: {
+    marginTop: 4,
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: "700",
+  },
+  sessionSummary: {
+    marginTop: 4,
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  sessionTags: {
+    marginTop: 4,
+    fontSize: 11,
+    color: COLORS.text,
+    fontWeight: "600",
+  },
 });

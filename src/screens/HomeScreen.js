@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -50,6 +51,13 @@ export default function HomeScreen() {
   const [entryMood, setEntryMood] = useState(3);
   const [entryNote, setEntryNote] = useState("");
   const [editingEntryId, setEditingEntryId] = useState(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editDate, setEditDate] = useState(new Date());
+  const [editSlot, setEditSlot] = useState(getSlotByHour(new Date().getHours()));
+  const [editMood, setEditMood] = useState(3);
+  const [editNote, setEditNote] = useState("");
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const loadEntries = useCallback(async () => {
     const all = await getEntries();
@@ -62,46 +70,53 @@ export default function HomeScreen() {
     }, [loadEntries]),
   );
 
-  const hydrateDraftFromEntry = useCallback(
-    (dateKey, slot) => {
-      const existing = entries.find(
-        (item) => item.date === dateKey && item.slot === slot,
-      );
-      if (existing) {
-        setEntryMood(existing.mood);
-        setEntryNote(existing.note || "");
-        setEditingEntryId(existing.id);
-      } else {
-        setEntryMood(3);
-        setEntryNote("");
-        setEditingEntryId(null);
-      }
-    },
-    [entries],
+  const selectedDateKey = useMemo(() => toDateKey(entryDate), [entryDate]);
+  const existingEntryForSelection = useMemo(
+    () =>
+      entries.find(
+        (item) => item.date === selectedDateKey && item.slot === entrySlot,
+      ) || null,
+    [entries, selectedDateKey, entrySlot],
   );
+  const saveDisabled = saving || Boolean(existingEntryForSelection);
 
   const resetDraft = useCallback(() => {
     const now = new Date();
     const slot = getSlotByHour(now.getHours());
-    const dateKey = toDateKey(now);
     setEntryDate(now);
     setEntrySlot(slot);
-    hydrateDraftFromEntry(dateKey, slot);
-  }, [hydrateDraftFromEntry]);
+    setEntryMood(3);
+    setEntryNote("");
+    setEditingEntryId(null);
+  }, []);
 
   const onChangeDraftDate = (_, selectedDate) => {
     setShowDatePicker(false);
     if (!selectedDate) return;
     setEntryDate(selectedDate);
-    hydrateDraftFromEntry(toDateKey(selectedDate), entrySlot);
+    setEntryMood(3);
+    setEntryNote("");
+    setEditingEntryId(null);
   };
 
   const onChangeSlot = (slot) => {
     setEntrySlot(slot);
-    hydrateDraftFromEntry(toDateKey(entryDate), slot);
+    setEntryMood(3);
+    setEntryNote("");
+    setEditingEntryId(null);
   };
 
-  const onSaveEntry = async () => {
+  const onSaveEntry = async (options = {}) => {
+    const { showSavedAlert = true, closeEditModal = false } = options;
+    if (existingEntryForSelection) {
+      if (showSavedAlert) {
+        Alert.alert(
+          "Entry already exists",
+          "This date and slot already has an entry. Use Edit from entry history to update it.",
+        );
+      }
+      return;
+    }
     if (saving) return;
     setSaving(true);
     const dateKey = toDateKey(entryDate);
@@ -119,44 +134,68 @@ export default function HomeScreen() {
         isBackfilled: dateKey !== toDateKey(new Date()),
       });
       setEntries(updated);
-      Alert.alert(
-        "Saved",
-        exists ? "Entry updated for this slot." : "New entry saved.",
-      );
+      if (showSavedAlert) {
+        Alert.alert(
+          "Saved",
+          exists ? "Entry updated for this slot." : "New entry saved.",
+        );
+      }
+      if (closeEditModal) {
+        setEditModalVisible(false);
+      }
       resetDraft();
     } finally {
       setSaving(false);
     }
   };
 
-  const onDeleteEntry = async (entry) => {
-    Alert.alert("Delete entry", "This entry will be removed permanently.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          const updated = await deleteEntry({
-            id: entry.id,
-            date: entry.date,
-            slot: entry.slot,
-          });
-          setEntries(updated);
-          if (editingEntryId === entry.id) {
-            resetDraft();
-          }
-        },
-      },
-    ]);
+  const onDeleteEntry = (entry) => {
+    setDeleteTarget(entry);
+    setDeleteModalVisible(true);
+  };
+
+  const onConfirmDeleteEntry = async () => {
+    if (!deleteTarget) return;
+    const updated = await deleteEntry({
+      id: deleteTarget.id,
+      date: deleteTarget.date,
+      slot: deleteTarget.slot,
+    });
+    setEntries(updated);
+    if (editingEntryId === deleteTarget.id) {
+      resetDraft();
+    }
+    setDeleteModalVisible(false);
+    setDeleteTarget(null);
   };
 
   const onEditEntry = (entry) => {
-    const draftDate = new Date(entry.date);
-    setEntryDate(draftDate);
-    setEntrySlot(entry.slot);
-    setEntryMood(entry.mood);
-    setEntryNote(entry.note || "");
+    setEditDate(new Date(entry.date));
+    setEditSlot(entry.slot);
+    setEditMood(entry.mood);
+    setEditNote(entry.note || "");
     setEditingEntryId(entry.id);
+    setEditModalVisible(true);
+  };
+
+  const onSaveEditedEntry = async () => {
+    if (saving || !editingEntryId) return;
+    setSaving(true);
+    try {
+      const updated = await upsertEntry({
+        date: toDateKey(editDate),
+        slot: editSlot,
+        mood: editMood,
+        note: editNote.trim(),
+        actualLoggedAt: new Date().toISOString(),
+        isBackfilled: toDateKey(editDate) !== toDateKey(new Date()),
+      });
+      setEntries(updated);
+      setEditModalVisible(false);
+      setEditingEntryId(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const groupedEntries = useMemo(() => {
@@ -194,9 +233,14 @@ export default function HomeScreen() {
           style={styles.formCard}
         >
           <Text style={styles.title}> What you are feeling now?</Text>
-          <Text style={styles.metaText}>
-            Date: {formatLongDate(entryDate)} | Slot: {capitalize(entrySlot)}
-          </Text>
+            <Text style={styles.metaText}>
+              Date: {formatLongDate(entryDate)} | Slot: {capitalize(entrySlot)}
+            </Text>
+            {existingEntryForSelection ? (
+              <Text style={styles.lockedHint}>
+                Entry already saved for this date and slot. Use Edit below to change it.
+              </Text>
+            ) : null}
 
           <Pressable
             style={styles.dateButton}
@@ -250,12 +294,16 @@ export default function HomeScreen() {
 
           <View style={styles.entryActions}>
             <Pressable
-              style={[styles.primaryButton, saving && styles.buttonDisabled]}
+              style={[styles.primaryButton, saveDisabled && styles.buttonDisabled]}
               onPress={onSaveEntry}
-              disabled={saving}
+              disabled={saveDisabled}
             >
               <Text style={styles.primaryButtonText}>
-                {saving ? "Saving..." : "Save Entry"}
+                {saving
+                  ? "Saving..."
+                  : existingEntryForSelection
+                    ? "Already Saved"
+                    : "Save Entry"}
               </Text>
             </Pressable>
           </View>
@@ -333,6 +381,113 @@ export default function HomeScreen() {
           ))
         )}
       </ScrollView>
+
+      <Modal
+        transparent
+        visible={editModalVisible}
+        animationType="fade"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <LinearGradient
+            colors={["#7b91eb", "#6E8BFF", "#E3E8FF"]}
+            locations={[0, 0.5, 1]}
+            start={{ x: 1, y: 1 }}
+            end={{ x: 0, y: 0 }}
+            style={styles.editModalCard}
+          >
+            <Text style={styles.title}>Edit Mood Entry</Text>
+            <Text style={styles.metaText}>
+              Date: {formatLongDate(editDate)} | Slot: {capitalize(editSlot)}
+            </Text>
+
+            <View style={styles.slotRow}>
+              {SLOT_OPTIONS.map((slot) => {
+                const active = slot === editSlot;
+                return (
+                  <Pressable
+                    key={slot}
+                    style={[styles.slotButton, active && styles.slotButtonActive]}
+                    onPress={() => setEditSlot(slot)}
+                  >
+                    <Text
+                      style={[
+                        styles.slotButtonText,
+                        active && styles.slotButtonTextActive,
+                      ]}
+                    >
+                      {capitalize(slot)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <MoodSelector value={editMood} onChange={setEditMood} />
+
+            <TextInput
+              value={editNote}
+              onChangeText={setEditNote}
+              placeholder="Update your note..."
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.input}
+              multiline
+              maxLength={180}
+            />
+
+            <View style={styles.entryActions}>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.primaryButton, saving && styles.buttonDisabled]}
+                onPress={onSaveEditedEntry}
+                disabled={saving}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {saving ? "Saving..." : "Save Entry"}
+                </Text>
+              </Pressable>
+            </View>
+          </LinearGradient>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={deleteModalVisible}
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteModalCard}>
+            <Text style={styles.deleteModalTitle}>Delete entry</Text>
+            <Text style={styles.deleteModalMessage}>
+              This entry will be removed permanently.
+            </Text>
+            <View style={styles.entryActions}>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => {
+                  setDeleteModalVisible(false);
+                  setDeleteTarget(null);
+                }}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.primaryButton, styles.deleteConfirmButton]}
+                onPress={onConfirmDeleteEntry}
+              >
+                <Text style={styles.primaryButtonText}>Delete</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -432,6 +587,12 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 16 },
   buttonDisabled: { opacity: 0.7 },
+  lockedHint: {
+    color: COLORS.text,
+    fontWeight: "700",
+    marginBottom: 8,
+    fontSize: 12,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "800",
@@ -503,5 +664,40 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 14,
+  },
+  editModalCard: {
+    width: "100%",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+  },
+  deleteModalCard: {
+    width: "100%",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    backgroundColor: COLORS.surface,
+  },
+  deleteModalTitle: {
+    color: COLORS.text,
+    fontWeight: "800",
+    fontSize: 18,
+  },
+  deleteModalMessage: {
+    marginTop: 8,
+    color: COLORS.textMuted,
+    lineHeight: 20,
+  },
+  deleteConfirmButton: {
+    backgroundColor: COLORS.danger,
   },
 });

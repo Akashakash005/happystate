@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { toDateKey } from '../utils/date';
 import { auth, db } from './firebase';
-import { DB_SCHEMA } from '../constants/dataSchema';
+import { DB_SCHEMA, getUserDocId } from '../constants/dataSchema';
 
 const STORAGE_KEY = '@happy_state_entries_v1';
 const SLOT_HOURS = { morning: 9, afternoon: 14, evening: 19, night: 23 };
@@ -80,11 +80,11 @@ export async function getEntries() {
     }
   })();
 
-  const uid = auth.currentUser?.uid;
-  if (!uid) return localEntries;
+  const userDocId = getUserDocId(auth.currentUser);
+  if (!userDocId) return localEntries;
 
   try {
-    const ref = doc(db, DB_SCHEMA.users, uid, DB_SCHEMA.appData, DB_SCHEMA.docs.moodEntries);
+    const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.moodEntries);
     const snap = await getDoc(ref);
 
     if (!snap.exists()) {
@@ -97,9 +97,28 @@ export async function getEntries() {
     const remoteEntries = Array.isArray(snap.data()?.entries)
       ? snap.data().entries.map(normalizeEntry).filter(Boolean)
       : [];
-    const sorted = sortEntries(remoteEntries);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-    return sorted;
+    const sortedRemote = sortEntries(remoteEntries);
+
+    if (sortedRemote.length === 0 && localEntries.length > 0) {
+      await setDoc(
+        ref,
+        { entries: localEntries, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+      return localEntries;
+    }
+
+    if (localEntries.length > sortedRemote.length) {
+      await setDoc(
+        ref,
+        { entries: localEntries, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+      return localEntries;
+    }
+
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(sortedRemote));
+    return sortedRemote;
   } catch {
     return localEntries;
   }
@@ -109,10 +128,10 @@ export async function saveEntries(entries) {
   const normalized = sortEntries((entries || []).map(normalizeEntry).filter(Boolean));
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
 
-  const uid = auth.currentUser?.uid;
-  if (uid) {
+  const userDocId = getUserDocId(auth.currentUser);
+  if (userDocId) {
     try {
-      const ref = doc(db, DB_SCHEMA.users, uid, DB_SCHEMA.appData, DB_SCHEMA.docs.moodEntries);
+      const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.moodEntries);
       await setDoc(ref, { entries: normalized, updatedAt: new Date().toISOString() }, { merge: true });
     } catch {
       // Keep local save successful even if remote sync temporarily fails.

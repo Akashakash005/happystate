@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { DB_SCHEMA } from '../constants/dataSchema';
+import { DB_SCHEMA, getUserDocId } from '../constants/dataSchema';
 
 const PROFILE_KEY = '@happy_state_profile_v1';
 
@@ -148,11 +148,11 @@ export async function getProfile() {
     }
   })();
 
-  const uid = auth.currentUser?.uid;
-  if (!uid) return localProfile;
+  const userDocId = getUserDocId(auth.currentUser);
+  if (!userDocId) return localProfile;
 
   try {
-    const ref = doc(db, DB_SCHEMA.users, uid, DB_SCHEMA.appData, DB_SCHEMA.docs.profile);
+    const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.profile);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
       if (localProfile && localProfile !== DEFAULT_PROFILE) {
@@ -177,16 +177,17 @@ export async function saveProfile(profileData) {
 
   await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(check.data));
 
-  const uid = auth.currentUser?.uid;
-  if (uid) {
+  const userDocId = getUserDocId(auth.currentUser);
+  if (userDocId) {
     try {
-      const ref = doc(db, DB_SCHEMA.users, uid, DB_SCHEMA.appData, DB_SCHEMA.docs.profile);
+      const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.profile);
       await setDoc(ref, { ...check.data }, { merge: true });
       await setDoc(
-        doc(db, DB_SCHEMA.users, uid),
+        doc(db, DB_SCHEMA.users, userDocId),
         {
           displayName: check.data.name || '',
           profileCompleted: hasRequiredPersonalDetails(check.data),
+          onboardingRequired: false,
           updatedAt: new Date().toISOString(),
         },
         { merge: true }

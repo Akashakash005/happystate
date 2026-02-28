@@ -15,6 +15,6 @@ export default function RootNavigator() {
     return <AuthNavigator />;
   }
 
-  const needsProfileSetup = !profile?.profileCompleted;
+  const needsProfileSetup = profile?.onboardingRequired === true;
   return <AppNavigator needsProfileSetup={needsProfileSetup} />;
 }

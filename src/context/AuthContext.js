@@ -8,7 +8,7 @@ import {
 } from 'firebase/auth';
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
-import { DB_SCHEMA } from '../constants/dataSchema';
+import { DB_SCHEMA, getUserDocId, normalizeEmail } from '../constants/dataSchema';
 
 const AuthContext = createContext(null);
 
@@ -19,14 +19,25 @@ function isEmailExistsError(error) {
 }
 
 async function upsertProfile(firebaseUser, extraFields = {}) {
-  const ref = doc(db, DB_SCHEMA.users, firebaseUser.uid);
+  const shouldSetProfileCompleted = Object.prototype.hasOwnProperty.call(
+    extraFields,
+    'profileCompleted'
+  );
+  const shouldSetOnboardingRequired = Object.prototype.hasOwnProperty.call(
+    extraFields,
+    'onboardingRequired'
+  );
+
+  const userDocId = getUserDocId(firebaseUser);
+  const ref = doc(db, DB_SCHEMA.users, userDocId);
   await setDoc(
     ref,
     {
       uid: firebaseUser.uid,
-      email: firebaseUser.email || '',
+      email: normalizeEmail(firebaseUser.email),
       displayName: extraFields.displayName || firebaseUser.displayName || '',
-      profileCompleted: false,
+      ...(shouldSetProfileCompleted ? { profileCompleted: Boolean(extraFields.profileCompleted) } : {}),
+      ...(shouldSetOnboardingRequired ? { onboardingRequired: Boolean(extraFields.onboardingRequired) } : {}),
       updatedAt: serverTimestamp(),
       ...extraFields,
     },
@@ -35,56 +46,130 @@ async function upsertProfile(firebaseUser, extraFields = {}) {
 }
 
 async function ensureUserDataScaffold(firebaseUser) {
-  const uid = firebaseUser.uid;
+  const userDocId = getUserDocId(firebaseUser);
   const profileRef = doc(
     db,
     DB_SCHEMA.users,
-    uid,
+    userDocId,
     DB_SCHEMA.appData,
     DB_SCHEMA.docs.profile
   );
   const moodEntriesRef = doc(
     db,
     DB_SCHEMA.users,
-    uid,
+    userDocId,
     DB_SCHEMA.appData,
     DB_SCHEMA.docs.moodEntries
   );
   const journalSessionsRef = doc(
     db,
     DB_SCHEMA.users,
-    uid,
+    userDocId,
     DB_SCHEMA.appData,
     DB_SCHEMA.docs.journalSessions
   );
 
-  await Promise.all([
-    setDoc(
-      profileRef,
-      {
-        name: firebaseUser.displayName || '',
-        email: firebaseUser.email || '',
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    ),
-    setDoc(
-      moodEntriesRef,
-      {
-        entries: [],
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    ),
-    setDoc(
-      journalSessionsRef,
-      {
-        sessions: [],
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    ),
+  const [profileSnap, moodSnap, journalSnap] = await Promise.all([
+    getDoc(profileRef),
+    getDoc(moodEntriesRef),
+    getDoc(journalSessionsRef),
   ]);
+
+  const tasks = [];
+
+  if (!profileSnap.exists()) {
+    tasks.push(
+      setDoc(
+        profileRef,
+        {
+          name: firebaseUser.displayName || '',
+          email: normalizeEmail(firebaseUser.email),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  if (!moodSnap.exists()) {
+    tasks.push(
+      setDoc(
+        moodEntriesRef,
+        {
+          entries: [],
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  if (!journalSnap.exists()) {
+    tasks.push(
+      setDoc(
+        journalSessionsRef,
+        {
+          sessions: [],
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  if (tasks.length) {
+    await Promise.all(tasks);
+  }
+}
+
+async function migrateLegacyUidStructure(firebaseUser) {
+  const userDocId = getUserDocId(firebaseUser);
+  const legacyUid = firebaseUser.uid;
+  if (!userDocId || userDocId === legacyUid) return;
+
+  const legacyRootRef = doc(db, DB_SCHEMA.users, legacyUid);
+  const nextRootRef = doc(db, DB_SCHEMA.users, userDocId);
+  const legacyRootSnap = await getDoc(legacyRootRef);
+  const nextRootSnap = await getDoc(nextRootRef);
+
+  if (legacyRootSnap.exists() && !nextRootSnap.exists()) {
+    await setDoc(nextRootRef, { ...legacyRootSnap.data() }, { merge: true });
+  }
+
+  const appDocIds = [
+    DB_SCHEMA.docs.profile,
+    DB_SCHEMA.docs.moodEntries,
+    DB_SCHEMA.docs.journalSessions,
+  ];
+
+  for (const docId of appDocIds) {
+    const legacyAppRef = doc(db, DB_SCHEMA.users, legacyUid, DB_SCHEMA.appData, docId);
+    const nextAppRef = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, docId);
+    const [legacySnap, nextSnap] = await Promise.all([getDoc(legacyAppRef), getDoc(nextAppRef)]);
+    if (!legacySnap.exists()) continue;
+
+    const legacyData = legacySnap.data() || {};
+    if (!nextSnap.exists()) {
+      await setDoc(nextAppRef, { ...legacyData }, { merge: true });
+      continue;
+    }
+
+    const nextData = nextSnap.data() || {};
+    const shouldRecoverMoodEntries =
+      docId === DB_SCHEMA.docs.moodEntries &&
+      Array.isArray(legacyData.entries) &&
+      legacyData.entries.length > 0 &&
+      (!Array.isArray(nextData.entries) || nextData.entries.length === 0);
+    const shouldRecoverJournalSessions =
+      docId === DB_SCHEMA.docs.journalSessions &&
+      Array.isArray(legacyData.sessions) &&
+      legacyData.sessions.length > 0 &&
+      (!Array.isArray(nextData.sessions) || nextData.sessions.length === 0);
+
+    if (shouldRecoverMoodEntries || shouldRecoverJournalSessions) {
+      await setDoc(nextAppRef, { ...legacyData }, { merge: true });
+    }
+  }
 }
 
 export function AuthProvider({ children }) {
@@ -99,9 +184,11 @@ export function AuthProvider({ children }) {
         setUser(firebaseUser || null);
 
         if (firebaseUser) {
+          await migrateLegacyUidStructure(firebaseUser);
           await upsertProfile(firebaseUser, { lastLoginAt: serverTimestamp() });
           await ensureUserDataScaffold(firebaseUser);
-          const snap = await getDoc(doc(db, DB_SCHEMA.users, firebaseUser.uid));
+          const userDocId = getUserDocId(firebaseUser);
+          const snap = await getDoc(doc(db, DB_SCHEMA.users, userDocId));
           setProfile(snap.exists() ? snap.data() : null);
         } else {
           setProfile(null);
@@ -125,6 +212,7 @@ export function AuthProvider({ children }) {
         displayName: (displayName || '').trim(),
         createdAt: serverTimestamp(),
         profileCompleted: false,
+        onboardingRequired: true,
       });
       await ensureUserDataScaffold(cred.user);
     } catch (error) {
@@ -134,6 +222,7 @@ export function AuthProvider({ children }) {
           await upsertProfile(cred.user, {
             displayName: (displayName || '').trim() || cred.user.displayName || '',
             profileCompleted: false,
+            onboardingRequired: true,
             updatedAt: serverTimestamp(),
           });
           await ensureUserDataScaffold(cred.user);
@@ -181,9 +270,15 @@ export function AuthProvider({ children }) {
     setAuthLoading(true);
     try {
       const uid = currentUser.uid;
+      const userDocId = getUserDocId(currentUser);
       await deleteUser(currentUser);
       try {
-        await deleteDoc(doc(db, DB_SCHEMA.users, uid));
+        if (userDocId) {
+          await deleteDoc(doc(db, DB_SCHEMA.users, userDocId));
+        }
+        if (uid && userDocId !== uid) {
+          await deleteDoc(doc(db, DB_SCHEMA.users, uid));
+        }
       } catch {
         // Best-effort cleanup. Account deletion succeeded even if profile doc cleanup fails.
       }
@@ -203,9 +298,10 @@ export function AuthProvider({ children }) {
       logout,
       deleteAccount,
       refreshProfile: async () => {
-        const uid = auth.currentUser?.uid;
-        if (!uid) return null;
-        const snap = await getDoc(doc(db, DB_SCHEMA.users, uid));
+        const currentUser = auth.currentUser;
+        const userDocId = getUserDocId(currentUser);
+        if (!userDocId) return null;
+        const snap = await getDoc(doc(db, DB_SCHEMA.users, userDocId));
         const next = snap.exists() ? snap.data() : null;
         setProfile(next);
         return next;
