@@ -71,11 +71,18 @@ function MainTabs() {
         headerLeftContainerStyle: { paddingLeft: 20 },
         headerRightContainerStyle: { paddingRight: 30 },
         headerShadowVisible: false,
-        headerRight: () => (
-          <Pressable onPress={() => navigation.getParent()?.navigate("Profile")}> 
-            <Ionicons name="person-circle-outline" size={38} color="#FFFFFF" />
-          </Pressable>
-        ),
+        headerRight: () => {
+          const parent = navigation.getParent();
+          return (
+            <Pressable onPress={() => parent?.navigate("Profile")}>
+              <Ionicons
+                name="person-circle-outline"
+                size={38}
+                color="#FFFFFF"
+              />
+            </Pressable>
+          );
+        },
         tabBarStyle: {
           backgroundColor: COLORS.primary,
           borderTopColor: COLORS.primary,
@@ -113,7 +120,11 @@ export default function AppNavigator({ needsProfileSetup = false }) {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="MainTabs"
+        component={MainTabs}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen
         name="ProfileSetup"
         component={ProfileScreen}

@@ -18,7 +18,7 @@
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "~15.0.8",
     "expo-status-bar": "~3.0.9",
-    "firebase": "^9.23.0",
+    "firebase": "^12.10.0",
     "idb": "^8.0.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
