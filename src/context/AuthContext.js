@@ -18,6 +18,15 @@ function isEmailExistsError(error) {
   return code.includes('email-already-in-use') || message.includes('EMAIL_EXISTS');
 }
 
+function sanitizeDisplayName(value, email = '') {
+  const next = String(value || '').trim();
+  const emailLower = String(email || '').trim().toLowerCase();
+  if (!next) return '';
+  if (next.toLowerCase() === emailLower) return '';
+  if (next.includes('@')) return '';
+  return next;
+}
+
 async function upsertProfile(firebaseUser, extraFields = {}) {
   const shouldSetProfileCompleted = Object.prototype.hasOwnProperty.call(
     extraFields,
@@ -35,7 +44,10 @@ async function upsertProfile(firebaseUser, extraFields = {}) {
     {
       uid: firebaseUser.uid,
       email: normalizeEmail(firebaseUser.email),
-      displayName: extraFields.displayName || firebaseUser.displayName || '',
+      displayName: sanitizeDisplayName(
+        extraFields.displayName || firebaseUser.displayName || '',
+        firebaseUser.email
+      ),
       ...(shouldSetProfileCompleted ? { profileCompleted: Boolean(extraFields.profileCompleted) } : {}),
       ...(shouldSetOnboardingRequired ? { onboardingRequired: Boolean(extraFields.onboardingRequired) } : {}),
       updatedAt: serverTimestamp(),
@@ -68,11 +80,27 @@ async function ensureUserDataScaffold(firebaseUser) {
     DB_SCHEMA.appData,
     DB_SCHEMA.docs.journalSessions
   );
+  const longTermSummaryRef = doc(
+    db,
+    DB_SCHEMA.users,
+    userDocId,
+    DB_SCHEMA.memory,
+    DB_SCHEMA.docs.longTermSummary
+  );
+  const rollingContextRef = doc(
+    db,
+    DB_SCHEMA.users,
+    userDocId,
+    DB_SCHEMA.memory,
+    DB_SCHEMA.docs.rollingContext
+  );
 
-  const [profileSnap, moodSnap, journalSnap] = await Promise.all([
+  const [profileSnap, moodSnap, journalSnap, longTermSnap, rollingSnap] = await Promise.all([
     getDoc(profileRef),
     getDoc(moodEntriesRef),
     getDoc(journalSessionsRef),
+    getDoc(longTermSummaryRef),
+    getDoc(rollingContextRef),
   ]);
 
   const tasks = [];
@@ -82,7 +110,7 @@ async function ensureUserDataScaffold(firebaseUser) {
       setDoc(
         profileRef,
         {
-          name: firebaseUser.displayName || '',
+          name: sanitizeDisplayName(firebaseUser.displayName, firebaseUser.email),
           email: normalizeEmail(firebaseUser.email),
           updatedAt: serverTimestamp(),
         },
@@ -110,6 +138,57 @@ async function ensureUserDataScaffold(firebaseUser) {
         journalSessionsRef,
         {
           sessions: [],
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  if (!longTermSnap.exists()) {
+    tasks.push(
+      setDoc(
+        longTermSummaryRef,
+        {
+          profileSummary: '',
+          emotionalBaselineSummary: '',
+          personalityPattern: '',
+          stressBaseline: '',
+          emotionalTriggers: [],
+          supportPatterns: [],
+          recurringThemes: [],
+          relationshipPatterns: [],
+          manualTags: [],
+          userOverrides: {
+            profileSummary: false,
+            emotionalBaselineSummary: false,
+            personalityPattern: false,
+            stressBaseline: false,
+            emotionalTriggers: false,
+            supportPatterns: false,
+            recurringThemes: false,
+            relationshipPatterns: false,
+            manualTags: false,
+          },
+          lastCompressedAt: null,
+          lastProcessedJournalEntryCount: 0,
+          lastProcessedMoodEntryCount: 0,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  if (!rollingSnap.exists()) {
+    tasks.push(
+      setDoc(
+        rollingContextRef,
+        {
+          recentMoodTrend7d: '',
+          recentEntriesSummary: '',
+          sessionSummary: '',
+          activeFocus: '',
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -168,6 +247,16 @@ async function migrateLegacyUidStructure(firebaseUser) {
 
     if (shouldRecoverMoodEntries || shouldRecoverJournalSessions) {
       await setDoc(nextAppRef, { ...legacyData }, { merge: true });
+    }
+  }
+
+  const memoryDocIds = [DB_SCHEMA.docs.longTermSummary, DB_SCHEMA.docs.rollingContext];
+  for (const docId of memoryDocIds) {
+    const legacyMemRef = doc(db, DB_SCHEMA.users, legacyUid, DB_SCHEMA.memory, docId);
+    const nextMemRef = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.memory, docId);
+    const [legacySnap, nextSnap] = await Promise.all([getDoc(legacyMemRef), getDoc(nextMemRef)]);
+    if (legacySnap.exists() && !nextSnap.exists()) {
+      await setDoc(nextMemRef, { ...legacySnap.data() }, { merge: true });
     }
   }
 }

@@ -1,10 +1,13 @@
 export const DB_SCHEMA = {
   users: 'users',
   appData: 'appData',
+  memory: 'memory',
   docs: {
     profile: 'profile',
     moodEntries: 'moodEntries',
     journalSessions: 'journalSessions',
+    longTermSummary: 'longTermSummary',
+    rollingContext: 'rollingContext',
   },
 };
 
@@ -24,5 +27,7 @@ export function getUserPaths(user) {
     profile: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.appData}/${DB_SCHEMA.docs.profile}`,
     moodEntries: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.appData}/${DB_SCHEMA.docs.moodEntries}`,
     journalSessions: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.appData}/${DB_SCHEMA.docs.journalSessions}`,
+    longTermSummary: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.memory}/${DB_SCHEMA.docs.longTermSummary}`,
+    rollingContext: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.memory}/${DB_SCHEMA.docs.rollingContext}`,
   };
 }

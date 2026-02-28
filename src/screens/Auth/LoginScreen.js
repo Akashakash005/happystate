@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../constants/colors";
 import { useAuth } from "../../context/AuthContext";
@@ -129,9 +130,11 @@ export default function LoginScreen({ navigation }) {
 
               <View style={styles.socialRow}>
                 <Pressable style={styles.socialButton}>
+                  <Ionicons name="logo-google" size={18} color="#DB4437" />
                   <Text style={styles.socialButtonText}>Google</Text>
                 </Pressable>
                 <Pressable style={styles.socialButton}>
+                  <Ionicons name="logo-facebook" size={18} color="#1877F2" />
                   <Text style={styles.socialButtonText}>Facebook</Text>
                 </Pressable>
               </View>
@@ -283,6 +286,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
     backgroundColor: "#FFFFFF",
   },
   socialButtonText: {

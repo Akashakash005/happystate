@@ -24,6 +24,46 @@ export function calculateDailyAverage(entries) {
     }));
 }
 
+export function calculateDaySlotSeries(entries) {
+  const slotOrder = ['morning', 'afternoon', 'evening', 'night'];
+  const bySlot = {
+    morning: [],
+    afternoon: [],
+    evening: [],
+    night: [],
+  };
+
+  (entries || []).forEach((entry) => {
+    const slot = slotOrder.includes(entry?.slot) ? entry.slot : 'evening';
+    const score = typeof entry.score === 'number' ? entry.score : toScore(entry.mood);
+    bySlot[slot].push(score);
+  });
+
+  return slotOrder
+    .filter((slot) => bySlot[slot].length > 0)
+    .map((slot) => ({
+      label: slot.charAt(0).toUpperCase(),
+      value: round2(bySlot[slot].reduce((acc, n) => acc + n, 0) / bySlot[slot].length),
+      slot,
+      count: bySlot[slot].length,
+    }));
+}
+
+export function calculateStabilityFromSeries(values) {
+  const points = (values || []).filter((v) => typeof v === 'number' && !Number.isNaN(v));
+  if (!points.length) return 0;
+  if (points.length === 1) return 100;
+
+  let diffSum = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    diffSum += Math.abs(points[i] - points[i - 1]);
+  }
+  const avgDiff = diffSum / (points.length - 1);
+  // Score range is -1..1 => max adjacent diff is 2.
+  const normalizedInstability = Math.max(0, Math.min(1, avgDiff / 2));
+  return Math.max(0, Math.min(100, Math.round((1 - normalizedInstability) * 100)));
+}
+
 export function calculateSlotAverage(entries) {
   const slots = ['morning', 'afternoon', 'evening', 'night'];
   const aggregates = {

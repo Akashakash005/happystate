@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { DB_SCHEMA, getUserDocId } from '../constants/dataSchema';
+import { maybeRefreshLongTermSummary, saveRollingContext } from './memoryService';
 
 const STORAGE_KEY = '@happy_state_journal_sessions_v1';
 
@@ -263,6 +264,13 @@ export async function createJournalSession(initialTitle = 'New reflection') {
   return session;
 }
 
+export async function deleteJournalSession(sessionId) {
+  const sessions = await getJournalSessions();
+  const filtered = sessions.filter((session) => session.id !== sessionId);
+  await saveJournalSessions(filtered);
+  return filtered;
+}
+
 export async function addJournalExchange({ sessionId, userText, analysis }) {
   const sessions = await getJournalSessions();
   const now = new Date().toISOString();
@@ -328,6 +336,24 @@ export async function addJournalExchange({ sessionId, userText, analysis }) {
   nextSessions[index] = updatedSession;
 
   const saved = await saveJournalSessions(nextSessions);
+  try {
+    await saveRollingContext({
+      recentMoodTrend7d: intelligence.moodTrend || '',
+      recentEntriesSummary: intelligence.lastMoodTag
+        ? `Recent mood tag: ${intelligence.lastMoodTag}`
+        : '',
+      sessionSummary: intelligence.summary || '',
+      activeFocus: userText || '',
+    });
+  } catch {
+    // Memory refresh should not block chat persistence.
+  }
+  try {
+    const allJournalEntries = saved.flatMap((s) => (Array.isArray(s?.entries) ? s.entries : []));
+    maybeRefreshLongTermSummary({ journalEntries: allJournalEntries }).catch(() => {});
+  } catch {
+    // Long-term compression is best-effort and should never block user flow.
+  }
   return {
     sessions: saved,
     sessionId: updatedSession.id,

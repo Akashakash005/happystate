@@ -15,13 +15,25 @@ const OPTION_SETS = {
   gender: ['Female', 'Male', 'Non-binary', 'Prefer not to say'],
 };
 
+function sanitizeName(name, email = '') {
+  const next = String(name || '').trim();
+  const emailLower = String(email || '').trim().toLowerCase();
+  if (!next) return '';
+  if (next.toLowerCase() === emailLower) return '';
+  if (next.includes('@')) return '';
+  return next;
+}
+
 export const DEFAULT_PROFILE = {
   name: 'You',
+  email: '',
   age: '',
   profession: '',
   weight: '',
   height: '',
   gender: 'Prefer not to say',
+  avatarDataUri: '',
+  avatarSizeBytes: 0,
   about: '',
   stressLevel: 'Medium',
   sleepAverage: '7',
@@ -122,11 +134,14 @@ export function validateProfile(profileData = {}) {
     data: {
       ...next,
       name: String(next.name).trim(),
+      email: String(next.email || '').trim().toLowerCase(),
       age,
       profession: String(next.profession || '').trim(),
       weight,
       height,
       gender: next.gender,
+      avatarDataUri: String(next.avatarDataUri || ''),
+      avatarSizeBytes: Number(next.avatarSizeBytes || 0),
       about: String(next.about || '').trim().slice(0, 240),
       sleepAverage,
       allowLongTermAnalysis: Boolean(next.allowLongTermAnalysis),
@@ -142,7 +157,9 @@ export async function getProfile() {
       const raw = await AsyncStorage.getItem(PROFILE_KEY);
       if (!raw) return DEFAULT_PROFILE;
       const parsed = JSON.parse(raw);
-      return { ...DEFAULT_PROFILE, ...(parsed || {}) };
+      const merged = { ...DEFAULT_PROFILE, ...(parsed || {}) };
+      const cleanName = sanitizeName(merged.name, merged.email);
+      return { ...merged, name: cleanName || DEFAULT_PROFILE.name };
     } catch {
       return DEFAULT_PROFILE;
     }
@@ -162,8 +179,13 @@ export async function getProfile() {
     }
 
     const remote = { ...DEFAULT_PROFILE, ...(snap.data() || {}) };
-    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(remote));
-    return remote;
+    const cleanName = sanitizeName(remote.name, remote.email);
+    const normalizedRemote = {
+      ...remote,
+      name: cleanName || DEFAULT_PROFILE.name,
+    };
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(normalizedRemote));
+    return normalizedRemote;
   } catch {
     return localProfile;
   }

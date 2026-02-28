@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,12 +9,14 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
 import { COLORS } from "../constants/colors";
 import { analyzeJournalEntryWithContext } from "../services/aiJournalService";
 import {
   addJournalExchange,
   createJournalSession,
+  deleteJournalSession,
   getJournalSessions,
 } from "../services/journalService";
 import { formatLongDate } from "../utils/date";
@@ -98,12 +100,16 @@ export default function JournalChatScreen() {
       );
 
       try {
-        const history = (activeSession.messages || []).slice(-8).map((message) => ({
-          role: message.role,
-          text: message.text,
-        }));
+        const history = (activeSession.messages || [])
+          .slice(-8)
+          .map((message) => ({
+            role: message.role,
+            text: message.text,
+          }));
 
-        const analysis = await analyzeJournalEntryWithContext(text, { history });
+        const analysis = await analyzeJournalEntryWithContext(text, {
+          history,
+        });
         const result = await addJournalExchange({
           sessionId: activeSession.id,
           userText: text,
@@ -139,6 +145,21 @@ export default function JournalChatScreen() {
     setActiveSessionId(session.id);
     setSuggestedPrompts(DEFAULT_SUGGESTIONS);
     setHistoryOpen(false);
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    const updated = await deleteJournalSession(sessionId);
+    if (!updated.length) {
+      const first = await createJournalSession("New reflection");
+      setSessions([first]);
+      setActiveSessionId(first.id);
+      return;
+    }
+
+    setSessions(updated);
+    if (activeSessionId === sessionId) {
+      setActiveSessionId(updated[0].id);
+    }
   };
 
   return (
@@ -285,33 +306,52 @@ export default function JournalChatScreen() {
               {sessions.map((session) => {
                 const isActive = session.id === activeSessionId;
                 return (
-                  <Pressable
+                  <LinearGradient
                     key={session.id}
+                    colors={
+                      isActive ? ["#7990ef", "#c6cff9"] : ["#b9c4f3", "#E3E8FF"]
+                    }
+                    locations={[0, 0.5, 1]}
+                    start={{ x: 1, y: 1 }}
+                    end={{ x: 0, y: 0 }}
                     style={[
                       styles.sessionRow,
                       isActive && styles.sessionRowActive,
                     ]}
-                    onPress={() => {
-                      setActiveSessionId(session.id);
-                      setHistoryOpen(false);
-                    }}
                   >
-                    <Text style={styles.sessionTitle}>{session.title}</Text>
-                    <Text style={styles.sessionMeta}>
-                      {formatLongDate(session.updatedAt)}
-                    </Text>
-                    <Text style={styles.sessionTrend}>{trendLabel(session)}</Text>
-                    {session.summary ? (
-                      <Text style={styles.sessionSummary} numberOfLines={1}>
-                        {session.summary}
+                    <View style={styles.sessionTopRow}>
+                      <Pressable
+                        style={styles.sessionTitlePress}
+                        onPress={() => {
+                          setActiveSessionId(session.id);
+                          setHistoryOpen(false);
+                        }}
+                      >
+                        <Text style={styles.sessionTitle}>{session.title}</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.sessionDeleteButton}
+                        onPress={() => handleDeleteSession(session.id)}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={16}
+                          color={COLORS.danger}
+                        />
+                      </Pressable>
+                    </View>
+                    <Pressable
+                      style={styles.sessionContentPress}
+                      onPress={() => {
+                        setActiveSessionId(session.id);
+                        setHistoryOpen(false);
+                      }}
+                    >
+                      <Text style={styles.sessionMeta}>
+                        {formatLongDate(session.updatedAt)}
                       </Text>
-                    ) : null}
-                    {session.tags?.length ? (
-                      <Text style={styles.sessionTags}>
-                        {session.tags.slice(0, 3).join("  •  ")}
-                      </Text>
-                    ) : null}
-                  </Pressable>
+                    </Pressable>
+                  </LinearGradient>
                 );
               })}
             </ScrollView>
@@ -550,11 +590,38 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
     marginBottom: 8,
-    backgroundColor: COLORS.background,
+    overflow: "hidden",
+  },
+  sessionTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  sessionTitlePress: {
+    flex: 1,
+    marginRight: 8,
+  },
+  sessionContentPress: {
+    paddingRight: 0,
+  },
+  sessionDeleteButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
   },
   sessionRowActive: {
     borderColor: COLORS.primary,
-    backgroundColor: COLORS.surface,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   sessionTitle: { color: COLORS.text, fontWeight: "700" },
   sessionMeta: { color: COLORS.textMuted, marginTop: 2, fontSize: 12 },

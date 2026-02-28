@@ -17,9 +17,13 @@ Rules:
 - "sentiment": number between -1 and 1.
 - "followUpQuestion": exactly one open-ended reflective question (no numbering, no list).
 - Do not include markdown, bullets, labels, or extra keys.
+- Prioritize the latest user message first, then use context to keep continuity.
+- If the user mentions a person already in context, keep that person/topic in your follow-up.
+- Avoid generic reset questions like "what comes to mind?" when the topic is already clear.
+- If the user adds factual detail, acknowledge it specifically before asking the next question.
 - If context is unclear, ask one gentle clarifying question.`;
 
-export function buildJournalUserPrompt({ entryText, history = [] }) {
+export function buildJournalUserPrompt({ entryText, history = [], context = {} }) {
   const compactHistory = (history || [])
     .slice(-8)
     .map((message) => {
@@ -30,11 +34,25 @@ export function buildJournalUserPrompt({ entryText, history = [] }) {
     .filter(Boolean)
     .join('\n');
 
+  const contextBlock = `User context (compressed memory):
+- Profile: ${context?.profileSummary || 'Not available'}
+- Recent mood trend: ${context?.recentMoodTrend || 'Not available'}
+- Recent mood entries summary: ${context?.recentEntriesSummary || 'Not available'}
+- Long-term emotional memory: ${context?.longTermSummary || 'Not available'}
+- Manual relationship tags: ${context?.manualTagsSummary || 'Not available'}
+- Rolling context memory: ${context?.rollingSummary || 'Not available'}
+- Recent chat summary: ${context?.recentChatHistorySummary || 'Not available'}`;
+
   if (!compactHistory) {
-    return `Journal entry:\n${entryText}`;
+    return `${contextBlock}
+
+Latest user journal entry:
+${entryText}`;
   }
 
-  return `Recent conversation context:
+  return `${contextBlock}
+
+Recent conversation context:
 ${compactHistory}
 
 Latest user journal entry:

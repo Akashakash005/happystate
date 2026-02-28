@@ -4,6 +4,7 @@ import {
   buildJournalUserPrompt,
   buildNameExtractionUserPrompt,
 } from "../constants/aiPrompts";
+import { buildJournalContext } from "./journalContextService";
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || "";
 const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || "gemini-2.5-flash";
@@ -216,10 +217,16 @@ export async function analyzeJournalEntryWithContext(entryText, options = {}) {
   const history = Array.isArray(options.history) ? options.history : [];
 
   try {
+    let context = {};
+    try {
+      context = await buildJournalContext({ history });
+    } catch {
+      context = {};
+    }
     const content = await modelChat({
       systemPrompt: JOURNAL_ANALYSIS_SYSTEM_PROMPT,
-      userPrompt: buildJournalUserPrompt({ entryText, history }),
-      temperature: 0.4,
+      userPrompt: buildJournalUserPrompt({ entryText, history, context }),
+      temperature: 0.25,
     });
     const parsed = safeJsonParse(content);
     const normalized = validateJournalAnalysisPayload(parsed);

@@ -18,6 +18,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import MoodSelector from "../components/MoodSelector";
 import { COLORS } from "../constants/colors";
 import { getMoodMeta } from "../constants/moods";
+import { useAuth } from "../context/AuthContext";
+import { getProfile } from "../services/profileService";
 import {
   deleteEntry,
   getEntries,
@@ -33,6 +35,19 @@ function capitalize(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function getWelcomeName(profileName, email) {
+  const cleanProfileName = String(profileName || "").trim();
+  if (cleanProfileName && !cleanProfileName.includes("@"))
+    return cleanProfileName;
+
+  const localPart = String(email || "")
+    .split("@")[0]
+    ?.trim();
+  if (localPart) return localPart;
+
+  return "there";
+}
+
 function getSlotByHour(hour) {
   if (hour >= 5 && hour < 12) return "morning";
   if (hour >= 12 && hour < 17) return "afternoon";
@@ -41,7 +56,9 @@ function getSlotByHour(hour) {
 }
 
 export default function HomeScreen() {
+  const { user, profile } = useAuth();
   const [entries, setEntries] = useState([]);
+  const [profileName, setProfileName] = useState("");
   const [saving, setSaving] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [entryDate, setEntryDate] = useState(new Date());
@@ -53,15 +70,21 @@ export default function HomeScreen() {
   const [editingEntryId, setEditingEntryId] = useState(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editDate, setEditDate] = useState(new Date());
-  const [editSlot, setEditSlot] = useState(getSlotByHour(new Date().getHours()));
+  const [editSlot, setEditSlot] = useState(
+    getSlotByHour(new Date().getHours()),
+  );
   const [editMood, setEditMood] = useState(3);
   const [editNote, setEditNote] = useState("");
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const loadEntries = useCallback(async () => {
-    const all = await getEntries();
+    const [all, storedProfile] = await Promise.all([
+      getEntries(),
+      getProfile(),
+    ]);
     setEntries(all);
+    setProfileName(String(storedProfile?.name || "").trim());
   }, []);
 
   useFocusEffect(
@@ -215,6 +238,11 @@ export default function HomeScreen() {
       }));
   }, [entries]);
 
+  const welcomeName = useMemo(
+    () => getWelcomeName(profileName || profile?.displayName, user?.email),
+    [profileName, profile?.displayName, user?.email],
+  );
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -225,6 +253,11 @@ export default function HomeScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
+        <Text style={styles.welcomeText}>
+          Welcome back,{" "}
+          <Text style={styles.welcomeNameText}>{welcomeName}</Text> !
+        </Text>
+
         <LinearGradient
           colors={["#7b91eb", "#6E8BFF", "#E3E8FF"]}
           locations={[0, 0.5, 1]}
@@ -233,14 +266,15 @@ export default function HomeScreen() {
           style={styles.formCard}
         >
           <Text style={styles.title}> What you are feeling now?</Text>
-            <Text style={styles.metaText}>
-              Date: {formatLongDate(entryDate)} | Slot: {capitalize(entrySlot)}
+          <Text style={styles.metaText}>
+            Date: {formatLongDate(entryDate)} | Slot: {capitalize(entrySlot)}
+          </Text>
+          {existingEntryForSelection ? (
+            <Text style={styles.lockedHint}>
+              Entry already saved for this date and slot. Use Edit below to
+              change it.
             </Text>
-            {existingEntryForSelection ? (
-              <Text style={styles.lockedHint}>
-                Entry already saved for this date and slot. Use Edit below to change it.
-              </Text>
-            ) : null}
+          ) : null}
 
           <Pressable
             style={styles.dateButton}
@@ -294,7 +328,10 @@ export default function HomeScreen() {
 
           <View style={styles.entryActions}>
             <Pressable
-              style={[styles.primaryButton, saveDisabled && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                saveDisabled && styles.buttonDisabled,
+              ]}
               onPress={onSaveEntry}
               disabled={saveDisabled}
             >
@@ -407,7 +444,10 @@ export default function HomeScreen() {
                 return (
                   <Pressable
                     key={slot}
-                    style={[styles.slotButton, active && styles.slotButtonActive]}
+                    style={[
+                      styles.slotButton,
+                      active && styles.slotButtonActive,
+                    ]}
                     onPress={() => setEditSlot(slot)}
                   >
                     <Text
@@ -495,6 +535,18 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: 16, paddingBottom: 36 },
+  welcomeText: {
+    paddingLeft: 5,
+    color: COLORS.text,
+    fontWeight: "800",
+    fontSize: 20,
+    marginBottom: 10,
+  },
+  welcomeNameText: {
+    color: "#F59E0B",
+    fontWeight: "900",
+    fontSize: 25,
+  },
   formCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 14,

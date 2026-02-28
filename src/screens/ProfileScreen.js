@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { COLORS } from "../constants/colors";
 import {
@@ -20,12 +22,17 @@ import {
   hasRequiredPersonalDetails,
   saveProfile,
 } from "../services/profileService";
+import {
+  getMemoryContext,
+  saveLongTermSummary,
+} from "../services/memoryService";
 import { useAuth } from "../context/AuthContext";
 
 const TABS = [
   { key: "general", label: "General" },
   { key: "emotional", label: "Emotional" },
   { key: "ai", label: "AI Preferences" },
+  { key: "journal", label: "Journal Settings" },
   { key: "privacy", label: "Privacy" },
   { key: "account", label: "Account" },
 ];
@@ -36,6 +43,11 @@ const CARD_GRADIENT = {
   start: { x: 1, y: 1 },
   end: { x: 0, y: 0 },
 };
+const AVATAR_MAX_BYTES = 120 * 1024;
+
+function isEmailLike(value) {
+  return String(value || "").includes("@");
+}
 
 function SegmentedControl({ options, value, onChange, disabled }) {
   return (
@@ -90,16 +102,26 @@ function FieldLabel({ children, hint }) {
 }
 
 export default function ProfileScreen({ navigation, route }) {
-  const { user, profile: authProfile, logout, deleteAccount, refreshProfile } = useAuth();
+  const {
+    user,
+    profile: authProfile,
+    logout,
+    deleteAccount,
+    refreshProfile,
+  } = useAuth();
   const forceOnboarding = Boolean(route?.params?.forceOnboarding);
   const [form, setForm] = useState(null);
   const [activeTab, setActiveTab] = useState("general");
   const [saving, setSaving] = useState(false);
   const [accountActionLoading, setAccountActionLoading] = useState(false);
+  const [memoryForm, setMemoryForm] = useState(null);
+  const [newTagLabel, setNewTagLabel] = useState("");
+  const [newTagName, setNewTagName] = useState("");
   const [sectionEdit, setSectionEdit] = useState({
     general: false,
     emotional: false,
     ai: false,
+    journal: false,
     privacy: false,
   });
   const [confirmModal, setConfirmModal] = useState({
@@ -116,10 +138,58 @@ export default function ProfileScreen({ navigation, route }) {
   const bannerTranslate = useRef(new Animated.Value(-8)).current;
 
   const loadProfile = useCallback(async () => {
-    const stored = await getProfile();
+    const [stored, memory] = await Promise.all([
+      getProfile(),
+      getMemoryContext(),
+    ]);
+    const resolvedEmail = String(stored.email || user?.email || "").trim();
+    const storedName = String(stored.name || "").trim();
+    const authName = String(authProfile?.displayName || "").trim();
+    const isStoredNameEmailLike =
+      isEmailLike(storedName) ||
+      (resolvedEmail &&
+        storedName.toLowerCase() === resolvedEmail.toLowerCase());
+    const resolvedName = isStoredNameEmailLike
+      ? isEmailLike(authName)
+        ? "You"
+        : authName || "You"
+      : storedName || (isEmailLike(authName) ? "You" : authName || "You");
+
     setForm({
       ...stored,
-      name: stored.name || authProfile?.displayName || user?.email || "You",
+      name: resolvedName,
+      email: resolvedEmail,
+    });
+
+    if (
+      (isStoredNameEmailLike && resolvedName !== storedName) ||
+      resolvedEmail !== String(stored.email || "").trim()
+    ) {
+      try {
+        await saveProfile({
+          ...stored,
+          name: resolvedName,
+          email: resolvedEmail,
+        });
+      } catch {
+        // Non-blocking migration; UI still uses sanitized in-memory values.
+      }
+    }
+
+    const longTerm = memory?.longTermSummary || {};
+    setMemoryForm({
+      profileSummary: longTerm.profileSummary || "",
+      emotionalBaselineSummary: longTerm.emotionalBaselineSummary || "",
+      personalityPattern: longTerm.personalityPattern || "",
+      stressBaseline: longTerm.stressBaseline || "",
+      emotionalTriggersText: (longTerm.emotionalTriggers || []).join(", "),
+      supportPatternsText: (longTerm.supportPatterns || []).join(", "),
+      recurringThemesText: (longTerm.recurringThemes || []).join(", "),
+      relationshipPatternsText: (longTerm.relationshipPatterns || []).join(
+        ", ",
+      ),
+      manualTags: Array.isArray(longTerm.manualTags) ? longTerm.manualTags : [],
+      updatedAt: longTerm.updatedAt || null,
     });
   }, [authProfile?.displayName, user?.email]);
 
@@ -143,6 +213,7 @@ export default function ProfileScreen({ navigation, route }) {
       general: true,
       emotional: false,
       ai: false,
+      journal: false,
       privacy: false,
     });
   }, [forceOnboarding]);
@@ -150,6 +221,16 @@ export default function ProfileScreen({ navigation, route }) {
   const setField = (key, value) => {
     setForm((prev) => ({ ...(prev || {}), [key]: value }));
   };
+  const setMemoryField = (key, value) => {
+    setMemoryForm((prev) => ({ ...(prev || {}), [key]: value }));
+  };
+
+  const parseCommaList = (value) =>
+    String(value || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 20);
 
   const openSectionEdit = (key) => {
     setSectionEdit((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -191,8 +272,37 @@ export default function ProfileScreen({ navigation, route }) {
     if (!form || saving || !sectionEdit[sectionKey]) return;
     setSaving(true);
     try {
-      const saved = await saveProfile(form);
-      setForm(saved);
+      if (sectionKey === "journal") {
+        const nextManualTags = Array.isArray(memoryForm?.manualTags)
+          ? memoryForm.manualTags
+              .map((item) => ({
+                label: String(item?.label || "").trim(),
+                name: String(item?.name || "").trim(),
+              }))
+              .filter((item) => item.label && item.name)
+          : [];
+
+        await saveLongTermSummary({
+          profileSummary: String(memoryForm?.profileSummary || "").trim(),
+          emotionalBaselineSummary: String(
+            memoryForm?.emotionalBaselineSummary || "",
+          ).trim(),
+          personalityPattern: String(
+            memoryForm?.personalityPattern || "",
+          ).trim(),
+          stressBaseline: String(memoryForm?.stressBaseline || "").trim(),
+          emotionalTriggers: parseCommaList(memoryForm?.emotionalTriggersText),
+          supportPatterns: parseCommaList(memoryForm?.supportPatternsText),
+          recurringThemes: parseCommaList(memoryForm?.recurringThemesText),
+          relationshipPatterns: parseCommaList(
+            memoryForm?.relationshipPatternsText,
+          ),
+          manualTags: nextManualTags,
+        });
+      } else {
+        const saved = await saveProfile(form);
+        setForm(saved);
+      }
       setSectionEdit((prev) => ({ ...prev, [sectionKey]: false }));
       showSaveSuccess();
 
@@ -298,6 +408,63 @@ export default function ProfileScreen({ navigation, route }) {
     setGenderModalVisible(true);
   };
 
+  const onPickAvatar = async () => {
+    if (!sectionEdit.general || saving) return;
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission required",
+        "Please allow photo library access to upload your avatar.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.35,
+      base64: true,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    const rawBase64 = String(asset.base64 || "");
+    if (!rawBase64) {
+      Alert.alert("Upload failed", "Could not read selected image.");
+      return;
+    }
+
+    const approxBytes = Math.floor((rawBase64.length * 3) / 4);
+    if (approxBytes > AVATAR_MAX_BYTES) {
+      Alert.alert(
+        "Image too large",
+        "Please choose a smaller image. Avatar limit is 120 KB for Firestore safety.",
+      );
+      return;
+    }
+
+    const mime = asset.mimeType || "image/jpeg";
+    setForm((prev) => ({
+      ...(prev || {}),
+      avatarDataUri: `data:${mime};base64,${rawBase64}`,
+      avatarSizeBytes: approxBytes,
+    }));
+  };
+
+  const addManualTag = () => {
+    const label = String(newTagLabel || "").trim();
+    const name = String(newTagName || "").trim();
+    if (!label || !name) return;
+    setMemoryForm((prev) => ({
+      ...(prev || {}),
+      manualTags: [...(prev?.manualTags || []), { label, name }],
+    }));
+    setNewTagLabel("");
+    setNewTagName("");
+  };
+
   const renderSectionHeader = (title, description, sectionKey) => (
     <View style={styles.sectionHeaderRow}>
       <View style={{ flex: 1 }}>
@@ -359,6 +526,15 @@ export default function ProfileScreen({ navigation, route }) {
             editable={editable}
             value={String(form.name || "")}
             onChangeText={(v) => setField("name", v)}
+          />
+
+          <FieldLabel hint="Primary account email (read-only)">
+            Email
+          </FieldLabel>
+          <TextInput
+            style={[styles.input, styles.inputDisabled]}
+            editable={false}
+            value={String(form.email || user?.email || "")}
           />
 
           <View style={styles.twoCol}>
@@ -540,6 +716,173 @@ export default function ProfileScreen({ navigation, route }) {
       );
     }
 
+    if (activeTab === "journal") {
+      const editable = sectionEdit.journal;
+      return (
+        <LinearGradient {...CARD_GRADIENT} style={styles.card}>
+          {renderSectionHeader(
+            "Journal Settings",
+            "Edit the same AI long-term context used in journal conversations.",
+            "journal",
+          )}
+
+          <FieldLabel hint="Part of AI context. Add mappings like boss: Rakesh, mom: Sumathi.">
+            Manual Tags
+          </FieldLabel>
+          <View style={styles.twoCol}>
+            <View style={styles.col}>
+              <TextInput
+                style={[styles.input, !editable && styles.inputDisabled]}
+                editable={editable}
+                placeholder="Label (e.g. boss)"
+                placeholderTextColor={COLORS.textMuted}
+                value={newTagLabel}
+                onChangeText={setNewTagLabel}
+              />
+            </View>
+            <View style={styles.col}>
+              <TextInput
+                style={[styles.input, !editable && styles.inputDisabled]}
+                editable={editable}
+                placeholder="Name (e.g. Rakesh)"
+                placeholderTextColor={COLORS.textMuted}
+                value={newTagName}
+                onChangeText={setNewTagName}
+              />
+            </View>
+          </View>
+          <Pressable
+            style={[styles.inlineAddBtn, !editable && styles.saveBtnDisabled]}
+            disabled={!editable}
+            onPress={addManualTag}
+          >
+            <Text style={styles.inlineAddBtnText}>Add Tag</Text>
+          </Pressable>
+
+          {(memoryForm?.manualTags || []).map((tag, idx) => (
+            <View key={`${tag.label}_${idx}`} style={styles.tagRow}>
+              <TextInput
+                style={[styles.tagInput, !editable && styles.inputDisabled]}
+                editable={editable}
+                value={String(tag.label || "")}
+                onChangeText={(v) =>
+                  setMemoryForm((prev) => {
+                    const next = [...(prev?.manualTags || [])];
+                    next[idx] = { ...next[idx], label: v };
+                    return { ...(prev || {}), manualTags: next };
+                  })
+                }
+              />
+              <TextInput
+                style={[styles.tagInput, !editable && styles.inputDisabled]}
+                editable={editable}
+                value={String(tag.name || "")}
+                onChangeText={(v) =>
+                  setMemoryForm((prev) => {
+                    const next = [...(prev?.manualTags || [])];
+                    next[idx] = { ...next[idx], name: v };
+                    return { ...(prev || {}), manualTags: next };
+                  })
+                }
+              />
+              <Pressable
+                style={styles.tagDeleteBtn}
+                disabled={!editable}
+                onPress={() =>
+                  setMemoryForm((prev) => ({
+                    ...(prev || {}),
+                    manualTags: (prev?.manualTags || []).filter(
+                      (_, i) => i !== idx,
+                    ),
+                  }))
+                }
+              >
+                <Ionicons
+                  name="trash-outline"
+                  size={16}
+                  color={COLORS.danger}
+                />
+              </Pressable>
+            </View>
+          ))}
+
+          <FieldLabel hint="This is the AI memory context; your edits override auto-generated text.">
+            Profile Summary
+          </FieldLabel>
+          <TextInput
+            style={[styles.aboutInput, !editable && styles.inputDisabled]}
+            editable={editable}
+            multiline
+            value={String(memoryForm?.profileSummary || "")}
+            onChangeText={(v) => setMemoryField("profileSummary", v)}
+            textAlignVertical="top"
+          />
+
+          <FieldLabel>Emotional Baseline Summary</FieldLabel>
+          <TextInput
+            style={[styles.aboutInput, !editable && styles.inputDisabled]}
+            editable={editable}
+            multiline
+            value={String(memoryForm?.emotionalBaselineSummary || "")}
+            onChangeText={(v) => setMemoryField("emotionalBaselineSummary", v)}
+            textAlignVertical="top"
+          />
+
+          <FieldLabel>Personality Pattern</FieldLabel>
+          <TextInput
+            style={[styles.aboutInput, !editable && styles.inputDisabled]}
+            editable={editable}
+            multiline
+            value={String(memoryForm?.personalityPattern || "")}
+            onChangeText={(v) => setMemoryField("personalityPattern", v)}
+            textAlignVertical="top"
+          />
+
+          <FieldLabel>Stress Baseline</FieldLabel>
+          <TextInput
+            style={[styles.input, !editable && styles.inputDisabled]}
+            editable={editable}
+            value={String(memoryForm?.stressBaseline || "")}
+            onChangeText={(v) => setMemoryField("stressBaseline", v)}
+          />
+
+          <FieldLabel hint="Comma separated">Emotional Triggers</FieldLabel>
+          <TextInput
+            style={[styles.input, !editable && styles.inputDisabled]}
+            editable={editable}
+            value={String(memoryForm?.emotionalTriggersText || "")}
+            onChangeText={(v) => setMemoryField("emotionalTriggersText", v)}
+          />
+
+          <FieldLabel hint="Comma separated">Support Patterns</FieldLabel>
+          <TextInput
+            style={[styles.input, !editable && styles.inputDisabled]}
+            editable={editable}
+            value={String(memoryForm?.supportPatternsText || "")}
+            onChangeText={(v) => setMemoryField("supportPatternsText", v)}
+          />
+
+          <FieldLabel hint="Comma separated">Recurring Themes</FieldLabel>
+          <TextInput
+            style={[styles.input, !editable && styles.inputDisabled]}
+            editable={editable}
+            value={String(memoryForm?.recurringThemesText || "")}
+            onChangeText={(v) => setMemoryField("recurringThemesText", v)}
+          />
+
+          <FieldLabel hint="Comma separated">Relationship Patterns</FieldLabel>
+          <TextInput
+            style={[styles.input, !editable && styles.inputDisabled]}
+            editable={editable}
+            value={String(memoryForm?.relationshipPatternsText || "")}
+            onChangeText={(v) => setMemoryField("relationshipPatternsText", v)}
+          />
+
+          {renderSaveButton("journal")}
+        </LinearGradient>
+      );
+    }
+
     if (activeTab === "privacy") {
       const editable = sectionEdit.privacy;
       return (
@@ -614,17 +957,39 @@ export default function ProfileScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
       >
         <LinearGradient
-          colors={["#7b91eb", "#6E8BFF", "#E3E8FF"]}
+          colors={["#889ff4", "#4542fc", "#7b92f9"]}
           locations={[0, 0.5, 1]}
           start={{ x: 1, y: 1 }} // bottom-right
           end={{ x: 0, y: 0 }} // top-left
           style={styles.heroSection}
         >
-          <View style={styles.heroAvatar}>
-            <Text style={styles.heroAvatarText}>
-              {(form.name || "U").charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <Pressable
+            style={[
+              styles.heroAvatarWrap,
+              (!sectionEdit.general || saving) && styles.heroAvatarDisabled,
+            ]}
+            onPress={onPickAvatar}
+            disabled={!sectionEdit.general || saving}
+          >
+            <View style={styles.heroAvatar}>
+              {form.avatarDataUri ? (
+                <Image
+                  source={{ uri: form.avatarDataUri }}
+                  style={styles.heroAvatarImage}
+                />
+              ) : (
+                <Text style={styles.heroAvatarText}>
+                  {(form.name || "U").charAt(0).toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <View style={styles.heroAvatarBadge}>
+              <Ionicons name="camera-outline" size={12} color="#FFFFFF" />
+            </View>
+          </Pressable>
+          <Text style={styles.heroAvatarHint}>
+            Avatar limit: 120 KB (Firestore-safe). Tap avatar to upload.
+          </Text>
           <Text style={styles.heroName}>{form.name || "You"}</Text>
           <Text style={styles.heroEmail}>
             {user?.email || "No email linked"}
@@ -645,7 +1010,9 @@ export default function ProfileScreen({ navigation, route }) {
                   style={styles.tabBtn}
                   onPress={() => setActiveTab(tab.key)}
                 >
-                  <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                  <Text
+                    style={[styles.tabText, active && styles.tabTextActive]}
+                  >
                     {tab.label}
                   </Text>
                   <View
@@ -687,7 +1054,10 @@ export default function ProfileScreen({ navigation, route }) {
             <Text style={styles.modalTitle}>{confirmModal.title}</Text>
             <Text style={styles.modalMessage}>{confirmModal.message}</Text>
             <View style={styles.modalActions}>
-              <Pressable style={styles.modalCancelBtn} onPress={closeConfirmModal}>
+              <Pressable
+                style={styles.modalCancelBtn}
+                onPress={closeConfirmModal}
+              >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
@@ -775,8 +1145,39 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
+    overflow: "hidden",
+  },
+  heroAvatarWrap: {
+    position: "relative",
+  },
+  heroAvatarDisabled: {
+    opacity: 0.75,
+  },
+  heroAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroAvatarBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.6)",
   },
   heroAvatarText: { color: "#FFFFFF", fontWeight: "800", fontSize: 32 },
+  heroAvatarHint: {
+    marginTop: 8,
+    color: "#E2E8F0",
+    fontSize: 11,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   heroName: {
     marginTop: 12,
     color: "#FFFFFF",
@@ -819,6 +1220,7 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     lineHeight: 18,
     fontSize: 12,
+    marginBottom: 6,
   },
   editIconBtn: {
     width: 34,
@@ -915,6 +1317,42 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   switchSpacer: { height: 12 },
+
+  inlineAddBtn: {
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  inlineAddBtnText: { color: "#FFFFFF", fontWeight: "800" },
+  tagRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  tagInput: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    color: COLORS.text,
+    paddingHorizontal: 10,
+  },
+  tagDeleteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    backgroundColor: "#FEF2F2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   saveBtn: {
     marginTop: 14,

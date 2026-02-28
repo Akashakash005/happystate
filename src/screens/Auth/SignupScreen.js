@@ -180,7 +180,9 @@ export default function SignupScreen({ navigation }) {
                 style={styles.linkButton}
                 onPress={() => navigation.goBack()}
               >
-                <Text style={styles.linkText}>Already have an account? Login</Text>
+                <Text style={styles.linkText}>
+                  Already have an account? Login
+                </Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -244,10 +246,10 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: 30,
-    paddingTop: 32,
+    paddingTop: 20,
     paddingHorizontal: 20,
-    paddingBottom: 26,
-    minHeight: 560,
+    paddingBottom: 20,
+    minHeight: 520,
   },
   title: {
     fontSize: 40,

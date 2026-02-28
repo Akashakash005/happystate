@@ -24,7 +24,13 @@ export default function AuthNavigator() {
           title: 'Welcome Back',
         }}
       />
-      <Stack.Screen name="Signup" component={SignupScreen} options={{ title: 'Create Account' }} />
+      <Stack.Screen
+        name="Signup"
+        component={SignupScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack.Navigator>
   );
 }

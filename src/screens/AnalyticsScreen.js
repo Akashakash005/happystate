@@ -21,10 +21,11 @@ import { COLORS } from "../constants/colors";
 import { getEntries } from "../services/storageService";
 import { getFilteredData } from "../utils/analyticsFilters";
 import {
+  calculateDaySlotSeries,
   calculateDailyAverage,
   calculateHalfYearAverage,
   calculateSlotAverage,
-  calculateStabilityScore,
+  calculateStabilityFromSeries,
 } from "../utils/analyticsCalculations";
 
 const FILTERS = [
@@ -51,6 +52,72 @@ function shortDateLabel(dateKey) {
   const [y, m, d] = dateKey.split("-").map(Number);
   const date = new Date(y, (m || 1) - 1, d || 1);
   return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function toIsoDay(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function startOfWeekMonday(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const shift = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - shift);
+  return d;
+}
+
+function endOfWeekSunday(date) {
+  const start = startOfWeekMonday(date);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+function startOfMonth(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfMonth(date) {
+  const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function getDateWindow(filter) {
+  const now = new Date();
+  if (filter === "week") {
+    return { start: startOfWeekMonday(now), end: endOfWeekSunday(now) };
+  }
+  if (filter === "month") {
+    return { start: startOfMonth(now), end: endOfMonth(now) };
+  }
+  return null;
+}
+
+function findFallbackValueBeforeDate(allEntries, dateStartTs) {
+  const before = (allEntries || [])
+    .filter((entry) => {
+      const ts = new Date(entry.dateISO || entry.actualLoggedAt || entry.updatedAt || entry.date).getTime();
+      return !Number.isNaN(ts) && ts < dateStartTs;
+    })
+    .sort((a, b) => {
+      const ta = new Date(a.dateISO || a.actualLoggedAt || a.updatedAt || a.date).getTime();
+      const tb = new Date(b.dateISO || b.actualLoggedAt || b.updatedAt || b.date).getTime();
+      return tb - ta;
+    });
+
+  if (!before.length) return 0; // neutral fallback
+  const candidate = before[0];
+  if (typeof candidate.score === "number") return candidate.score;
+  const mood = Number(candidate.mood || 3);
+  return (mood - 3) / 2;
 }
 
 export default function AnalyticsScreen() {
@@ -82,17 +149,57 @@ export default function AnalyticsScreen() {
     () => getFilteredData(entries, filter),
     [entries, filter],
   );
-  const dailyAverage = useMemo(
-    () => calculateDailyAverage(filteredEntries),
-    [filteredEntries],
-  );
+  const trendSeries = useMemo(() => {
+    if (filter === "day") {
+      const daySlots = calculateDaySlotSeries(filteredEntries);
+      return daySlots.map((item) => ({
+        label: item.label,
+        value: item.value,
+        key: item.slot,
+      }));
+    }
+
+    const daily = calculateDailyAverage(filteredEntries);
+    if (filter === "week" || filter === "month") {
+      const window = getDateWindow(filter);
+      if (!window) return [];
+
+      const dailyMap = Object.fromEntries(
+        daily.map((item) => [item.date, item.average]),
+      );
+      const startTs = window.start.getTime();
+      let carry = findFallbackValueBeforeDate(entries, startTs);
+      const filled = [];
+
+      const cursor = new Date(window.start);
+      while (cursor.getTime() <= window.end.getTime()) {
+        const key = toIsoDay(cursor);
+        if (Object.prototype.hasOwnProperty.call(dailyMap, key)) {
+          carry = dailyMap[key];
+        }
+        filled.push({
+          label: shortDateLabel(key),
+          value: carry,
+          key,
+        });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return filled;
+    }
+
+    return daily.map((item) => ({
+      label: shortDateLabel(item.date),
+      value: item.average,
+      key: item.date,
+    }));
+  }, [entries, filteredEntries, filter]);
   const slotAverage = useMemo(
     () => calculateSlotAverage(filteredEntries),
     [filteredEntries],
   );
   const stability = useMemo(
-    () => calculateStabilityScore(filteredEntries),
-    [filteredEntries],
+    () => calculateStabilityFromSeries(trendSeries.map((item) => item.value)),
+    [trendSeries],
   );
   const halfYearAverage = useMemo(
     () =>
@@ -103,15 +210,21 @@ export default function AnalyticsScreen() {
   );
 
   const chartData = useMemo(() => {
-    if (!dailyAverage.length) {
+    if (!trendSeries.length) {
       return null;
     }
-    const labels = dailyAverage.map((item) => shortDateLabel(item.date));
-    const values = dailyAverage.map((item) => item.average);
+    const labels = trendSeries.map((item) => item.label);
+    const values = trendSeries.map((item) => item.value);
     return { labels, values };
-  }, [dailyAverage]);
+  }, [trendSeries]);
 
   const chartWidth = Math.max(Dimensions.get("window").width - 56, 300);
+  const xAxisLabel = filter === "day" ? "Entry" : "Day";
+  const yAxisLabel = "Emotion";
+  const chartHint =
+    filter === "day"
+      ? "X-axis: Entry  |  Y-axis: Emotion"
+      : "X-axis: Day  |  Y-axis: Emotion (daily average; missing days use last/neutral)";
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -150,36 +263,43 @@ export default function AnalyticsScreen() {
           style={styles.card}
         >
           <Text style={styles.cardTitle}>Emotional Trend Graph</Text>
+          <Text style={styles.chartHintText}>{chartHint}</Text>
           {chartData ? (
-            <LineChart
-              data={{
-                labels: chartData.labels,
-                datasets: [{ data: chartData.values }],
-              }}
-              width={chartWidth}
-              height={220}
-              withDots
-              withShadow={false}
-              withInnerLines
-              yAxisInterval={1}
-              yAxisLabel=""
-              yAxisSuffix=""
-              fromZero={false}
-              chartConfig={{
-                backgroundGradientFrom: "#FFFFFF",
-                backgroundGradientTo: "#FFFFFF",
-                color: (opacity = 1) => `rgba(29, 78, 216, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(100, 116, 139, ${opacity})`,
-                decimalPlaces: 2,
-                propsForDots: {
-                  r: "3",
-                  strokeWidth: "1",
-                  stroke: "#1D4ED8",
-                },
-              }}
-              bezier
-              style={styles.chart}
-            />
+            <View style={styles.chartFrame}>
+              <Text style={styles.axisYTitle}>{yAxisLabel}</Text>
+              <View style={styles.chartMain}>
+                <LineChart
+                  data={{
+                    labels: chartData.labels,
+                    datasets: [{ data: chartData.values }],
+                  }}
+                  width={chartWidth}
+                  height={220}
+                  withDots
+                  withShadow={false}
+                  withInnerLines
+                  yAxisInterval={1}
+                  yAxisLabel=""
+                  yAxisSuffix=""
+                  fromZero={false}
+                  chartConfig={{
+                    backgroundGradientFrom: "#FFFFFF",
+                    backgroundGradientTo: "#FFFFFF",
+                    color: (opacity = 1) => `rgba(29, 78, 216, ${opacity})`,
+                    labelColor: (opacity = 1) => `rgba(100, 116, 139, ${opacity})`,
+                    decimalPlaces: 2,
+                    propsForDots: {
+                      r: "3",
+                      strokeWidth: "1",
+                      stroke: "#1D4ED8",
+                    },
+                  }}
+                  bezier
+                  style={styles.chart}
+                />
+                <Text style={styles.axisXTitle}>{xAxisLabel}</Text>
+              </View>
+            </View>
           ) : (
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyText}>
@@ -288,6 +408,34 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 16,
     marginBottom: 10,
+  },
+  chartHintText: {
+    marginBottom: 8,
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  chartFrame: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  chartMain: {
+    flex: 1,
+  },
+  axisYTitle: {
+    width: 24,
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+    transform: [{ rotate: "-90deg" }],
+  },
+  axisXTitle: {
+    marginTop: 2,
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
   },
   chart: { borderRadius: 12 },
   emptyWrap: {
