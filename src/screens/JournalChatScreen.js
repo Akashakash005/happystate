@@ -1,16 +1,20 @@
-﻿import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "../constants/colors";
 import { analyzeJournalEntryWithContext } from "../services/aiJournalService";
 import {
@@ -29,14 +33,40 @@ const DEFAULT_SUGGESTIONS = [
 ];
 
 export default function JournalChatScreen() {
+  const insets = useSafeAreaInsets();
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [suggestedPrompts, setSuggestedPrompts] = useState(DEFAULT_SUGGESTIONS);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [composerHeight, setComposerHeight] = useState(58);
 
   const scrollRef = useRef(null);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(event?.endCoordinates?.height || 0);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 40);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const loadSessions = useCallback(async () => {
     const stored = await getJournalSessions();
@@ -162,9 +192,17 @@ export default function JournalChatScreen() {
     }
   };
 
+  const androidVirtualButtonsExtra =
+    Platform.OS === "android" && keyboardVisible && insets.bottom === 0 ? 20 : 0;
+  const composerBottomOffset =
+    Platform.OS === "android" && keyboardVisible
+      ? keyboardHeight + androidVirtualButtonsExtra
+      : 0;
+
   return (
-    <View style={styles.container}>
-      <View style={styles.topRow}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View style={styles.container}>
+        <View style={styles.topRow}>
         <Pressable
           style={styles.iconButton}
           onPress={() => setHistoryOpen(true)}
@@ -179,15 +217,27 @@ export default function JournalChatScreen() {
         <Pressable style={styles.newChatButton} onPress={startNewChat}>
           <Text style={styles.newChatButtonText}>New chat</Text>
         </Pressable>
-      </View>
+        </View>
 
-      <View style={styles.chatWindow}>
+        <View
+          style={[
+            styles.chatWindow,
+            {
+              paddingBottom:
+                composerHeight +
+                16 +
+                (keyboardVisible ? 6 + androidVirtualButtonsExtra : 46),
+            },
+          ]}
+        >
         <ScrollView
           ref={scrollRef}
           contentContainerStyle={styles.chatContent}
           onContentSizeChange={() =>
             scrollRef.current?.scrollToEnd({ animated: true })
           }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           showsVerticalScrollIndicator={false}
         >
           {!messages.length ? (
@@ -237,13 +287,19 @@ export default function JournalChatScreen() {
             </View>
           ) : null}
         </ScrollView>
-      </View>
+        </View>
 
-      <View style={styles.promptSection}>
+        <View
+          style={[
+            styles.promptSection,
+            { bottom: composerBottomOffset + composerHeight + 8 },
+          ]}
+        >
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.promptRow}
+          keyboardShouldPersistTaps="handled"
         >
           {suggestedPrompts.map((prompt) => (
             <Pressable
@@ -255,9 +311,17 @@ export default function JournalChatScreen() {
             </Pressable>
           ))}
         </ScrollView>
-      </View>
+        </View>
 
-      <View style={styles.composerBar}>
+        <View
+          style={[styles.composerBar, { bottom: composerBottomOffset }]}
+          onLayout={(event) => {
+            const nextHeight = Math.ceil(event.nativeEvent.layout.height || 58);
+            if (nextHeight !== composerHeight) {
+              setComposerHeight(nextHeight);
+            }
+          }}
+        >
         <Pressable style={styles.circleButton} onPress={startNewChat}>
           <Ionicons name="add" size={22} color={COLORS.surface} />
         </Pressable>
@@ -281,10 +345,10 @@ export default function JournalChatScreen() {
         >
           <Ionicons name="arrow-up" size={18} color={COLORS.surface} />
         </Pressable>
-      </View>
+        </View>
 
-      {historyOpen ? (
-        <View style={styles.drawerContainer}>
+        {historyOpen ? (
+          <View style={styles.drawerContainer}>
           <View style={styles.drawer}>
             <View style={styles.drawerHeader}>
               <Text style={styles.drawerTitle}>Your chats</Text>
@@ -360,9 +424,10 @@ export default function JournalChatScreen() {
             style={styles.drawerBackdrop}
             onPress={() => setHistoryOpen(false)}
           />
-        </View>
-      ) : null}
-    </View>
+          </View>
+        ) : null}
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -478,7 +543,9 @@ const styles = StyleSheet.create({
   },
   loadingLabel: { color: COLORS.primary },
   promptSection: {
-    marginTop: 8,
+    position: "absolute",
+    left: 12,
+    right: 12,
   },
   promptRow: {
     gap: 8,
@@ -499,7 +566,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   composerBar: {
-    marginTop: 8,
+    position: "absolute",
+    left: 12,
+    right: 12,
     borderRadius: 28,
     backgroundColor: COLORS.surface,
     borderWidth: 3,
@@ -643,3 +712,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+

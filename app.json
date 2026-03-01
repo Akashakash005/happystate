@@ -21,6 +21,12 @@
     },
     "android": {
       "package": "com.akash100.happystateapp",
+      "softwareKeyboardLayoutMode": "resize",
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/happystatelogo.png",
         "backgroundColor": "#ffffff"

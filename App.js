@@ -1,38 +1,42 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootNavigator from './src/navigation/RootNavigator';
-import { AuthProvider } from './src/context/AuthContext';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore if splash screen was already hidden.
 });
 
 export default function App() {
-  const [appReady, setAppReady] = useState(false);
-
-  useEffect(() => {
-    setAppReady(true);
-  }, []);
-
-  const onNavigationReady = useCallback(async () => {
-    await SplashScreen.hideAsync();
-  }, []);
-
-  if (!appReady) {
-    return null;
-  }
-
   return (
     <AuthProvider>
-      <SafeAreaProvider>
-        <NavigationContainer onReady={onNavigationReady}>
-          <StatusBar style="dark" />
-          <RootNavigator />
-        </NavigationContainer>
-      </SafeAreaProvider>
+      <AppShell />
     </AuthProvider>
+  );
+}
+
+function AppShell() {
+  const { initializing } = useAuth();
+  const [navigationReady, setNavigationReady] = useState(false);
+  const [splashHidden, setSplashHidden] = useState(false);
+
+  useEffect(() => {
+    if (!navigationReady || initializing || splashHidden) return;
+
+    SplashScreen.hideAsync()
+      .catch(() => {})
+      .finally(() => setSplashHidden(true));
+  }, [initializing, navigationReady, splashHidden]);
+
+  return (
+    <SafeAreaProvider>
+      <NavigationContainer onReady={() => setNavigationReady(true)}>
+        <StatusBar style="dark" />
+        <RootNavigator />
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

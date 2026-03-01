@@ -48,6 +48,26 @@ function scoreLabel(score) {
   return "Neutral";
 }
 
+function getStabilityPalette(stabilityScore) {
+  // Stability thresholds:
+  // >= 80  => great
+  // 50-79 => average
+  // < 50  => bad
+  if (stabilityScore >= 80) {
+    // great
+    // colors={["#29e518", "#6ccb7e", "#e3ffea"]}
+    return ["#29e518", "#6ccb7e", "#e3ffea"];
+  }
+  if (stabilityScore >= 50) {
+    // average
+    // colors={["#f8e61d", "#ffee6e", "#E3E8FF"]}
+    return ["#f8e61d", "#ffee6e", "#E3E8FF"];
+  }
+  // bad
+  // colors={["#fa6d58", "#ff7c6e", "#E3E8FF"]}
+  return ["#fa6d58", "#ff7c6e", "#E3E8FF"];
+}
+
 function shortDateLabel(dateKey) {
   const [y, m, d] = dateKey.split("-").map(Number);
   const date = new Date(y, (m || 1) - 1, d || 1);
@@ -104,12 +124,18 @@ function getDateWindow(filter) {
 function findFallbackValueBeforeDate(allEntries, dateStartTs) {
   const before = (allEntries || [])
     .filter((entry) => {
-      const ts = new Date(entry.dateISO || entry.actualLoggedAt || entry.updatedAt || entry.date).getTime();
+      const ts = new Date(
+        entry.dateISO || entry.actualLoggedAt || entry.updatedAt || entry.date,
+      ).getTime();
       return !Number.isNaN(ts) && ts < dateStartTs;
     })
     .sort((a, b) => {
-      const ta = new Date(a.dateISO || a.actualLoggedAt || a.updatedAt || a.date).getTime();
-      const tb = new Date(b.dateISO || b.actualLoggedAt || b.updatedAt || b.date).getTime();
+      const ta = new Date(
+        a.dateISO || a.actualLoggedAt || a.updatedAt || a.date,
+      ).getTime();
+      const tb = new Date(
+        b.dateISO || b.actualLoggedAt || b.updatedAt || b.date,
+      ).getTime();
       return tb - ta;
     });
 
@@ -201,6 +227,10 @@ export default function AnalyticsScreen() {
     () => calculateStabilityFromSeries(trendSeries.map((item) => item.value)),
     [trendSeries],
   );
+  const stabilityColors = useMemo(
+    () => getStabilityPalette(stability),
+    [stability],
+  );
   const halfYearAverage = useMemo(
     () =>
       filter === "jan-june" || filter === "jul-dec"
@@ -266,7 +296,7 @@ export default function AnalyticsScreen() {
           <Text style={styles.chartHintText}>{chartHint}</Text>
           {chartData ? (
             <View style={styles.chartFrame}>
-              <Text style={styles.axisYTitle}>{yAxisLabel}</Text>
+              {/* <Text style={styles.axisYTitle}>{yAxisLabel}</Text> */}
               <View style={styles.chartMain}>
                 <LineChart
                   data={{
@@ -286,7 +316,8 @@ export default function AnalyticsScreen() {
                     backgroundGradientFrom: "#FFFFFF",
                     backgroundGradientTo: "#FFFFFF",
                     color: (opacity = 1) => `rgba(29, 78, 216, ${opacity})`,
-                    labelColor: (opacity = 1) => `rgba(100, 116, 139, ${opacity})`,
+                    labelColor: (opacity = 1) =>
+                      `rgba(100, 116, 139, ${opacity})`,
                     decimalPlaces: 2,
                     propsForDots: {
                       r: "3",
@@ -297,7 +328,7 @@ export default function AnalyticsScreen() {
                   bezier
                   style={styles.chart}
                 />
-                <Text style={styles.axisXTitle}>{xAxisLabel}</Text>
+                {/* <Text style={styles.axisXTitle}>{xAxisLabel}</Text> */}
               </View>
             </View>
           ) : (
@@ -311,7 +342,7 @@ export default function AnalyticsScreen() {
 
         <View style={styles.metricsRow}>
           <LinearGradient
-            colors={["#7b91eb", "#6E8BFF", "#E3E8FF"]}
+            colors={stabilityColors}
             locations={[0, 0.5, 1]}
             start={{ x: 1, y: 1 }} // bottom-right
             end={{ x: 0, y: 0 }} // top-left

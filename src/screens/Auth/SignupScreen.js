@@ -21,6 +21,7 @@ export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [emailError, setEmailError] = useState("");
 
   const nameRef = useRef(null);
   const emailRef = useRef(null);
@@ -28,6 +29,8 @@ export default function SignupScreen({ navigation }) {
   const confirmPasswordRef = useRef(null);
 
   const handleSignup = async () => {
+    setEmailError("");
+
     if (!email.trim() || !password || !confirmPassword) {
       Alert.alert("Missing fields", "Please complete all required fields.");
       return;
@@ -54,14 +57,13 @@ export default function SignupScreen({ navigation }) {
       const normalized = message.toUpperCase();
 
       if (
+        code.includes("email-already-in-use") ||
         code.includes("invalid-credential") ||
         code.includes("wrong-password") ||
+        normalized.includes("EMAIL_EXISTS") ||
         normalized.includes("INVALID_LOGIN_CREDENTIALS")
       ) {
-        Alert.alert(
-          "Account already exists",
-          "This email is already registered. Password does not match. Use Login or reset password.",
-        );
+        setEmailError("This email is already registered. Use Login instead.");
         return;
       }
 
@@ -123,7 +125,10 @@ export default function SignupScreen({ navigation }) {
                 style={styles.input}
                 placeholder="Email address"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  if (emailError) setEmailError("");
+                }}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -131,6 +136,9 @@ export default function SignupScreen({ navigation }) {
                 onSubmitEditing={() => passwordRef.current?.focus()}
                 placeholderTextColor="#A0AEC0"
               />
+              {emailError ? (
+                <Text style={styles.emailErrorText}>{emailError}</Text>
+              ) : null}
 
               <TextInput
                 ref={passwordRef}
@@ -274,6 +282,14 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     backgroundColor: "#FFFFFF",
     fontSize: 16,
+  },
+  emailErrorText: {
+    marginTop: -6,
+    marginBottom: 10,
+    marginLeft: 2,
+    color: COLORS.danger,
+    fontSize: 12,
+    fontWeight: "700",
   },
   signUpButton: {
     borderRadius: 13,

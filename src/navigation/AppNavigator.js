@@ -93,6 +93,7 @@ function MainTabs() {
           paddingBottom: Math.max(8, insets.bottom),
           paddingTop: 8,
         },
+        tabBarHideOnKeyboard: true,
         tabBarItemStyle: { paddingVertical: 2 },
         tabBarShowLabel: false,
         tabBarIconStyle: { marginTop: 2 },
