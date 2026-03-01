@@ -69,6 +69,7 @@ export default function HomeScreen() {
   const [entryNote, setEntryNote] = useState("");
   const [editingEntryId, setEditingEntryId] = useState(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
   const [editDate, setEditDate] = useState(new Date());
   const [editSlot, setEditSlot] = useState(
     getSlotByHour(new Date().getHours()),
@@ -193,6 +194,7 @@ export default function HomeScreen() {
   };
 
   const onEditEntry = (entry) => {
+    setShowEditDatePicker(false);
     setEditDate(new Date(entry.date));
     setEditSlot(entry.slot);
     setEditMood(entry.mood);
@@ -201,19 +203,56 @@ export default function HomeScreen() {
     setEditModalVisible(true);
   };
 
+  const onChangeEditDate = (_, selectedDate) => {
+    setShowEditDatePicker(false);
+    if (!selectedDate) return;
+    setEditDate(selectedDate);
+  };
+
   const onSaveEditedEntry = async () => {
     if (saving || !editingEntryId) return;
+
+    const nextDateKey = toDateKey(editDate);
+    const originalEntry = entries.find((item) => item.id === editingEntryId);
+    if (!originalEntry) {
+      setEditModalVisible(false);
+      setEditingEntryId(null);
+      return;
+    }
+
+    const hasConflict = entries.some(
+      (item) =>
+        item.id !== editingEntryId &&
+        item.date === nextDateKey &&
+        item.slot === editSlot,
+    );
+    if (hasConflict) {
+      Alert.alert(
+        "Entry already exists",
+        "Another entry already exists for that date and slot.",
+      );
+      return;
+    }
+
     setSaving(true);
     try {
-      const updated = await upsertEntry({
-        date: toDateKey(editDate),
+      let updated = await upsertEntry({
+        date: nextDateKey,
         slot: editSlot,
         mood: editMood,
         note: editNote.trim(),
         actualLoggedAt: new Date().toISOString(),
-        isBackfilled: toDateKey(editDate) !== toDateKey(new Date()),
+        isBackfilled: nextDateKey !== toDateKey(new Date()),
       });
+
+      const movedDate = originalEntry.date !== nextDateKey;
+      const movedSlot = originalEntry.slot !== editSlot;
+      if (movedDate || movedSlot) {
+        updated = await deleteEntry({ id: originalEntry.id });
+      }
+
       setEntries(updated);
+      setShowEditDatePicker(false);
       setEditModalVisible(false);
       setEditingEntryId(null);
     } finally {
@@ -423,7 +462,10 @@ export default function HomeScreen() {
         transparent
         visible={editModalVisible}
         animationType="fade"
-        onRequestClose={() => setEditModalVisible(false)}
+        onRequestClose={() => {
+          setShowEditDatePicker(false);
+          setEditModalVisible(false);
+        }}
       >
         <View style={styles.modalOverlay}>
           <LinearGradient
@@ -437,6 +479,22 @@ export default function HomeScreen() {
             <Text style={styles.metaText}>
               Date: {formatLongDate(editDate)} | Slot: {capitalize(editSlot)}
             </Text>
+
+            <Pressable
+              style={styles.dateButton}
+              onPress={() => setShowEditDatePicker(true)}
+            >
+              <Text style={styles.dateButtonText}>Choose Date</Text>
+            </Pressable>
+
+            {showEditDatePicker ? (
+              <DateTimePicker
+                value={editDate}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={onChangeEditDate}
+              />
+            ) : null}
 
             <View style={styles.slotRow}>
               {SLOT_OPTIONS.map((slot) => {
@@ -478,7 +536,10 @@ export default function HomeScreen() {
             <View style={styles.entryActions}>
               <Pressable
                 style={styles.secondaryButton}
-                onPress={() => setEditModalVisible(false)}
+                onPress={() => {
+                  setShowEditDatePicker(false);
+                  setEditModalVisible(false);
+                }}
               >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </Pressable>

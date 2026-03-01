@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HomeScreen from "../screens/HomeScreen";
 import AnalyticsScreen from "../screens/AnalyticsScreen";
 import InsightsScreen from "../screens/InsightsScreen";
@@ -15,6 +16,8 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+
   const getTabIcon = (routeName, focused, color, size) => {
     if (routeName === "Home") {
       return (
@@ -86,12 +89,12 @@ function MainTabs() {
         tabBarStyle: {
           backgroundColor: COLORS.primary,
           borderTopColor: COLORS.primary,
-          height: 62,
-          paddingBottom: 8,
+          height: 62 + insets.bottom,
+          paddingBottom: Math.max(8, insets.bottom),
           paddingTop: 8,
         },
         tabBarItemStyle: { paddingVertical: 2 },
-        tabBarLabelStyle: { fontSize: 22, fontWeight: "600", color: "#FFFFFF" },
+        tabBarShowLabel: false,
         tabBarIconStyle: { marginTop: 2 },
         tabBarIcon: ({ focused, color, size }) =>
           getTabIcon(route.name, focused, color, size),
