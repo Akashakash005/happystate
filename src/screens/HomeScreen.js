@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -25,10 +26,21 @@ import {
   getEntries,
   upsertEntry,
 } from "../services/storageService";
+import {
+  filterEntriesByRange,
+  formatRangeLabel,
+  getDateRange,
+} from "../utils/analyticsRange";
 import { formatLongDate, toDateKey } from "../utils/date";
 
 const SLOT_OPTIONS = ["morning", "afternoon", "evening", "night"];
 const SLOT_ORDER = { morning: 1, afternoon: 2, evening: 3, night: 4 };
+const HISTORY_FILTERS = [
+  { key: "week", label: "Current Week" },
+  { key: "month", label: "Current Month" },
+  { key: "custom", label: "Custom" },
+  { key: "all", label: "All" },
+];
 
 function capitalize(value) {
   if (!value) return "";
@@ -78,6 +90,12 @@ export default function HomeScreen() {
   const [editNote, setEditNote] = useState("");
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [historyFilter, setHistoryFilter] = useState("week");
+  const initialCustomRange = useMemo(() => getDateRange("week", new Date()), []);
+  const [customStartDate, setCustomStartDate] = useState(initialCustomRange.start);
+  const [customEndDate, setCustomEndDate] = useState(initialCustomRange.end);
+  const [showCustomStartPicker, setShowCustomStartPicker] = useState(false);
+  const [showCustomEndPicker, setShowCustomEndPicker] = useState(false);
 
   const loadEntries = useCallback(async () => {
     const [all, storedProfile] = await Promise.all([
@@ -90,7 +108,11 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      Keyboard.dismiss();
       loadEntries();
+      return () => {
+        Keyboard.dismiss();
+      };
     }, [loadEntries]),
   );
 
@@ -260,8 +282,41 @@ export default function HomeScreen() {
     }
   };
 
+  const historyDateRange = useMemo(() => {
+    if (historyFilter === "all") return null;
+    if (historyFilter === "custom") {
+      return getDateRange("custom", new Date(), {
+        startDate: customStartDate,
+        endDate: customEndDate,
+      });
+    }
+    return getDateRange(historyFilter, new Date());
+  }, [customEndDate, customStartDate, historyFilter]);
+
+  const historyEntries = useMemo(() => {
+    if (!historyDateRange) return entries;
+    return filterEntriesByRange(entries, historyDateRange);
+  }, [entries, historyDateRange]);
+
+  const historyRangeLabel = useMemo(() => {
+    if (!historyDateRange) return "All time";
+    return formatRangeLabel(historyFilter, historyDateRange, new Date());
+  }, [historyDateRange, historyFilter]);
+
+  const onChangeCustomStart = useCallback((_, selectedDate) => {
+    if (Platform.OS !== "ios") setShowCustomStartPicker(false);
+    if (!selectedDate) return;
+    setCustomStartDate(selectedDate);
+  }, []);
+
+  const onChangeCustomEnd = useCallback((_, selectedDate) => {
+    if (Platform.OS !== "ios") setShowCustomEndPicker(false);
+    if (!selectedDate) return;
+    setCustomEndDate(selectedDate);
+  }, []);
+
   const groupedEntries = useMemo(() => {
-    const groups = entries.reduce((acc, item) => {
+    const groups = historyEntries.reduce((acc, item) => {
       if (!acc[item.date]) acc[item.date] = [];
       acc[item.date].push(item);
       return acc;
@@ -275,7 +330,7 @@ export default function HomeScreen() {
           (a, b) => (SLOT_ORDER[b.slot] || 0) - (SLOT_ORDER[a.slot] || 0),
         ),
       }));
-  }, [entries]);
+  }, [historyEntries]);
 
   const welcomeName = useMemo(
     () => getWelcomeName(profileName || profile?.displayName, user?.email),
@@ -291,6 +346,7 @@ export default function HomeScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
       >
         <Text style={styles.welcomeText}>
           Welcome back,{" "}
@@ -360,9 +416,10 @@ export default function HomeScreen() {
             onChangeText={setEntryNote}
             placeholder="Start with a thought, a feeling, or a moment…"
             placeholderTextColor={COLORS.textMuted}
-            style={styles.input}
+            style={[styles.input, existingEntryForSelection && styles.inputDisabled]}
             multiline
             maxLength={180}
+            editable={!existingEntryForSelection}
           />
 
           <View style={styles.entryActions}>
@@ -386,11 +443,86 @@ export default function HomeScreen() {
         </LinearGradient>
 
         <Text style={styles.sectionTitle}>Entries By Date</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.historyFilterRow}
+        >
+          {HISTORY_FILTERS.map((item) => {
+            const active = item.key === historyFilter;
+            return (
+              <Pressable
+                key={item.key}
+                style={[
+                  styles.historyFilterChip,
+                  active && styles.historyFilterChipActive,
+                ]}
+                onPress={() => setHistoryFilter(item.key)}
+              >
+                <Text
+                  style={[
+                    styles.historyFilterText,
+                    active && styles.historyFilterTextActive,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        {historyFilter === "custom" ? (
+          <View style={styles.customRangeRow}>
+            <Pressable
+              style={styles.customDateButton}
+              onPress={() => setShowCustomStartPicker(true)}
+            >
+              <Text style={styles.customDateText}>
+                Start:{" "}
+                {customStartDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.customDateButton}
+              onPress={() => setShowCustomEndPicker(true)}
+            >
+              <Text style={styles.customDateText}>
+                End:{" "}
+                {customEndDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {showCustomStartPicker ? (
+          <DateTimePicker
+            value={customStartDate}
+            mode="date"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={onChangeCustomStart}
+          />
+        ) : null}
+        {showCustomEndPicker ? (
+          <DateTimePicker
+            value={customEndDate}
+            mode="date"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={onChangeCustomEnd}
+          />
+        ) : null}
+        <Text style={styles.historyRangeText}>{historyRangeLabel}</Text>
 
         {!groupedEntries.length ? (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>
-              No entries yet. Add your first mood above.
+              No entries found for this filter.
             </Text>
           </View>
         ) : (
@@ -674,6 +806,9 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     backgroundColor: "#F8FAFC",
   },
+  inputDisabled: {
+    opacity: 0.6,
+  },
   entryActions: {
     flexDirection: "row",
     gap: 10,
@@ -710,7 +845,59 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: COLORS.text,
-    marginBottom: 10,
+    marginBottom: 8,
+  },
+  historyFilterRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingBottom: 2,
+    marginBottom: 6,
+  },
+  historyFilterChip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  historyFilterChipActive: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#93C5FD",
+  },
+  historyFilterText: {
+    color: COLORS.textMuted,
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  historyFilterTextActive: {
+    color: COLORS.primary,
+  },
+  historyRangeText: {
+    color: COLORS.textMuted,
+    fontWeight: "600",
+    marginBottom: 8,
+    fontSize: 12,
+  },
+  customRangeRow: {
+    marginTop: 2,
+    marginBottom: 6,
+    flexDirection: "row",
+    gap: 8,
+  },
+  customDateButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    backgroundColor: "#F8FAFC",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  customDateText: {
+    color: COLORS.text,
+    fontWeight: "600",
+    fontSize: 12,
   },
   empty: {
     borderWidth: 1,
