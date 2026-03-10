@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { COLORS } from "../constants/colors";
+import { useTheme } from "../context/ThemeContext";
 import { getEntries } from "../services/storageService";
 import { getStats } from "../utils/analytics";
 import { useAuth } from "../context/AuthContext";
@@ -123,6 +123,8 @@ function confidenceLabel(entryCount, range) {
 }
 
 export default function InsightsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [entries, setEntries] = useState([]);
   const [selectedRange, setSelectedRange] = useState("week");
   const [insightText, setInsightText] = useState("");
@@ -243,7 +245,7 @@ export default function InsightsScreen() {
 
         {insightLoading ? (
           <View style={styles.loadingCard}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <ActivityIndicator size="small" color={colors.primary} />
             <Text style={styles.loadingText}>Building your reflection...</Text>
           </View>
         ) : null}
@@ -308,60 +310,57 @@ export default function InsightsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 24 },
   accountCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     padding: 14,
     marginBottom: 12,
   },
-  accountLabel: { color: COLORS.textMuted, fontWeight: "600", marginBottom: 2 },
+  accountLabel: { color: colors.textMuted, fontWeight: "600", marginBottom: 2 },
   accountValue: {
-    color: COLORS.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 10,
   },
   logoutButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.inputAccent,
     borderWidth: 1,
-    borderColor: "#BFDBFE",
+    borderColor: colors.inputAccentBorder,
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
-  logoutText: {
-    color: "#1E40AF",
-    fontWeight: "700",
-  },
+  logoutText: { color: colors.primary, fontWeight: "700" },
   disabled: { opacity: 0.7 },
   hero: {
-    backgroundColor: "#DBEAFE",
+    backgroundColor: colors.inputAccent,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#BFDBFE",
+    borderColor: colors.inputAccentBorder,
     marginBottom: 12,
   },
-  heroTitle: { fontSize: 18, fontWeight: "800", color: "#1E3A8A" },
-  heroText: { marginTop: 6, color: "#1E3A8A", lineHeight: 20 },
+  heroTitle: { fontSize: 18, fontWeight: "800", color: colors.text },
+  heroText: { marginTop: 6, color: colors.text, lineHeight: 20 },
   aiCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     padding: 14,
     marginBottom: 12,
   },
   aiTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: 8,
   },
   rangeRow: {
@@ -372,27 +371,27 @@ const styles = StyleSheet.create({
   rangeButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingVertical: 10,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.inputSurface,
     alignItems: "center",
   },
   rangeButtonActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: "#EFF6FF",
+    borderColor: colors.primary,
+    backgroundColor: colors.inputAccent,
   },
   rangeButtonText: {
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     fontWeight: "600",
     fontSize: 12,
   },
   rangeButtonTextActive: {
-    color: COLORS.primary,
+    color: colors.primary,
   },
   primaryButton: {
     marginTop: 12,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: 12,
     height: 46,
     justifyContent: "center",
@@ -401,73 +400,73 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 16 },
   loadingCard: {
     marginTop: 12,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.inputSurface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 12,
     flexDirection: "row",
     alignItems: "center",
   },
-  loadingText: { marginLeft: 8, color: COLORS.textMuted },
+  loadingText: { marginLeft: 8, color: colors.textMuted },
   errorText: {
     marginTop: 12,
-    color: COLORS.danger,
+    color: colors.danger,
     lineHeight: 20,
     fontWeight: "600",
   },
   snapshotCard: {
     marginTop: 12,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.inputSurface,
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   snapshotTitle: {
     fontSize: 15,
     fontWeight: "800",
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: 6,
   },
-  snapshotLine: { color: COLORS.text, marginBottom: 4, lineHeight: 20 },
+  snapshotLine: { color: colors.text, marginBottom: 4, lineHeight: 20 },
   aiDetailCard: {
     marginTop: 10,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.inputSurface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 12,
   },
-  aiDetailTitle: { color: COLORS.text, fontWeight: "800", marginBottom: 6 },
-  aiDetailBody: { color: COLORS.text, lineHeight: 21 },
+  aiDetailTitle: { color: colors.text, fontWeight: "800", marginBottom: 6 },
+  aiDetailBody: { color: colors.text, lineHeight: 21 },
   footerCard: {
     marginTop: 10,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.inputSurface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 12,
   },
-  limitText: { color: COLORS.textMuted, fontWeight: "700", marginBottom: 8 },
+  limitText: { color: colors.textMuted, fontWeight: "700", marginBottom: 8 },
   progressTrack: {
     height: 8,
     borderRadius: 99,
-    backgroundColor: "#E2E8F0",
+    backgroundColor: colors.border,
     overflow: "hidden",
   },
   progressFill: {
     height: 8,
     borderRadius: 99,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
   },
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
   },
-  cardText: { color: COLORS.text, lineHeight: 22, fontWeight: "500" },
+  cardText: { color: colors.text, lineHeight: 22, fontWeight: "500" },
 });

@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { getMoodMeta } from '../constants/moods';
 import { formatLongDate } from '../utils/date';
-import { COLORS } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 
 export default function MoodCard({ entry }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const meta = getMoodMeta(entry.mood);
   const slotLabel = entry.slot
     ? `${entry.slot.charAt(0).toUpperCase()}${entry.slot.slice(1)}`
@@ -24,19 +26,19 @@ export default function MoodCard({ entry }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 12,
     marginBottom: 10,
   },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  date: { color: COLORS.text, fontWeight: '600' },
+  date: { color: colors.text, fontWeight: '600' },
   badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   badgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  slot: { marginTop: 6, color: COLORS.textMuted, fontWeight: '600' },
-  note: { marginTop: 8, color: COLORS.textMuted, lineHeight: 20 },
+  slot: { marginTop: 6, color: colors.textMuted, fontWeight: '600' },
+  note: { marginTop: 8, color: colors.textMuted, lineHeight: 20 },
 });

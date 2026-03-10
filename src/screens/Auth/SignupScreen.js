@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -12,11 +12,13 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { COLORS } from "../../constants/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 
 export default function SignupScreen({ navigation }) {
   const { signup, authLoading } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -73,7 +75,7 @@ export default function SignupScreen({ navigation }) {
 
   return (
     <LinearGradient
-      colors={["#0033ff", "#3e58c1", "#0e1b58"]}
+      colors={colors.authGradient}
       locations={[0, 0.5, 1]}
       start={{ x: 1, y: 1 }}
       end={{ x: 0, y: 0 }}
@@ -117,7 +119,7 @@ export default function SignupScreen({ navigation }) {
                 autoCapitalize="words"
                 returnKeyType="next"
                 onSubmitEditing={() => emailRef.current?.focus()}
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.textMuted}
               />
 
               <TextInput
@@ -134,7 +136,7 @@ export default function SignupScreen({ navigation }) {
                 autoCorrect={false}
                 returnKeyType="next"
                 onSubmitEditing={() => passwordRef.current?.focus()}
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.textMuted}
               />
               {emailError ? (
                 <Text style={styles.emailErrorText}>{emailError}</Text>
@@ -150,7 +152,7 @@ export default function SignupScreen({ navigation }) {
                 autoCapitalize="none"
                 returnKeyType="next"
                 onSubmitEditing={() => confirmPasswordRef.current?.focus()}
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.textMuted}
               />
 
               <TextInput
@@ -163,7 +165,7 @@ export default function SignupScreen({ navigation }) {
                 autoCapitalize="none"
                 returnKeyType="done"
                 onSubmitEditing={handleSignup}
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.textMuted}
               />
 
               <Pressable
@@ -172,7 +174,7 @@ export default function SignupScreen({ navigation }) {
                 disabled={authLoading}
               >
                 <LinearGradient
-                  colors={["#0033ff", "#3e58c1", "#0e1b58"]}
+                  colors={colors.authGradient}
                   locations={[0, 0.5, 1]}
                   start={{ x: 1, y: 1 }}
                   end={{ x: 0, y: 0 }}
@@ -200,123 +202,114 @@ export default function SignupScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  gradientBackground: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  keyboardContainer: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "flex-start",
-    paddingBottom: 130,
-  },
-  heroSection: {
-    paddingHorizontal: 22,
-    paddingTop: 30,
-    paddingBottom: 28,
-  },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  topRowText: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 14,
-  },
-  ghostButton: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 11,
-  },
-  ghostButtonText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  brandText: {
-    marginTop: 36,
-    textAlign: "center",
-    color: "#FFFFFF",
-    fontSize: 44,
-    fontWeight: "800",
-    letterSpacing: 0.3,
-  },
-  card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 30,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    minHeight: 520,
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: "800",
-    color: "#1B1C2B",
-    textAlign: "center",
-  },
-  subtitle: {
-    marginTop: 8,
-    marginBottom: 24,
-    color: "#6E7191",
-    textAlign: "center",
-    fontSize: 17,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E7E9F2",
-    borderRadius: 13,
-    paddingHorizontal: 15,
-    height: 54,
-    marginBottom: 12,
-    color: COLORS.text,
-    backgroundColor: "#FFFFFF",
-    fontSize: 16,
-  },
-  emailErrorText: {
-    marginTop: -6,
-    marginBottom: 10,
-    marginLeft: 2,
-    color: COLORS.danger,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  signUpButton: {
-    borderRadius: 13,
-    overflow: "hidden",
-    marginTop: 4,
-  },
-  signUpButtonGradient: {
-    height: 54,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  signUpButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  disabled: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    marginTop: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  linkText: {
-    color: COLORS.primary,
-    fontWeight: "600",
-    fontSize: 15,
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    gradientBackground: { flex: 1 },
+    safeArea: { flex: 1 },
+    keyboardContainer: { flex: 1 },
+    scrollView: { flex: 1 },
+    scrollContent: {
+      flexGrow: 1,
+      justifyContent: "flex-start",
+      paddingBottom: 130,
+    },
+    heroSection: {
+      paddingHorizontal: 22,
+      paddingTop: 30,
+      paddingBottom: 28,
+    },
+    topRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    topRowText: {
+      color: "rgba(255,255,255,0.82)",
+      fontSize: 14,
+    },
+    ghostButton: {
+      backgroundColor: "rgba(255,255,255,0.2)",
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 11,
+    },
+    ghostButtonText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    brandText: {
+      marginTop: 36,
+      textAlign: "center",
+      color: "#FFFFFF",
+      fontSize: 44,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: 30,
+      paddingTop: 20,
+      paddingHorizontal: 20,
+      paddingBottom: 20,
+      minHeight: 520,
+    },
+    title: {
+      fontSize: 40,
+      fontWeight: "800",
+      color: colors.text,
+      textAlign: "center",
+    },
+    subtitle: {
+      marginTop: 8,
+      marginBottom: 24,
+      color: colors.textMuted,
+      textAlign: "center",
+      fontSize: 17,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 13,
+      paddingHorizontal: 15,
+      height: 54,
+      marginBottom: 12,
+      color: colors.text,
+      backgroundColor: colors.background,
+      fontSize: 16,
+    },
+    emailErrorText: {
+      marginTop: -6,
+      marginBottom: 10,
+      marginLeft: 2,
+      color: colors.danger,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    signUpButton: {
+      borderRadius: 13,
+      overflow: "hidden",
+      marginTop: 4,
+    },
+    signUpButtonGradient: {
+      height: 54,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    signUpButtonText: {
+      color: "#FFFFFF",
+      fontSize: 17,
+      fontWeight: "700",
+    },
+    disabled: { opacity: 0.7 },
+    linkButton: {
+      marginTop: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    linkText: {
+      color: colors.primary,
+      fontWeight: "600",
+      fontSize: 15,
+    },
+  });

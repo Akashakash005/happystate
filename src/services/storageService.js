@@ -2,7 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { toDateKey } from '../utils/date';
 import { auth, db } from './firebase';
-import { DB_SCHEMA, getUserDocId } from '../constants/dataSchema';
+import {
+  DB_SCHEMA,
+  getCharacterCollection,
+  getUserDocId,
+  normalizeCharacterMode,
+} from '../constants/dataSchema';
+import { getActiveCharacterMode } from './characterModeService';
 
 const STORAGE_KEY = '@happy_state_entries_v1';
 const SLOT_HOURS = { morning: 9, afternoon: 14, evening: 19, night: 23 };
@@ -65,10 +71,26 @@ function sortEntries(list) {
   });
 }
 
-export async function getEntries() {
+function getEntriesStorageKey(mode = 'public') {
+  return `${STORAGE_KEY}_${normalizeCharacterMode(mode)}`;
+}
+
+function moodEntriesRef(userDocId, mode = 'public') {
+  return doc(
+    db,
+    DB_SCHEMA.users,
+    userDocId,
+    getCharacterCollection(mode),
+    DB_SCHEMA.appData
+  );
+}
+
+export async function getEntries(modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
+  const storageKey = getEntriesStorageKey(mode);
   const localEntries = await (async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await AsyncStorage.getItem(storageKey);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       const normalized = Array.isArray(parsed)
@@ -84,7 +106,7 @@ export async function getEntries() {
   if (!userDocId) return localEntries;
 
   try {
-    const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.moodEntries);
+    const ref = moodEntriesRef(userDocId, mode);
     const snap = await getDoc(ref);
 
     if (!snap.exists()) {
@@ -94,15 +116,20 @@ export async function getEntries() {
       return localEntries;
     }
 
-    const remoteEntries = Array.isArray(snap.data()?.entries)
-      ? snap.data().entries.map(normalizeEntry).filter(Boolean)
+    const remoteEntries = Array.isArray(snap.data()?.moodEntries?.entries)
+      ? snap.data().moodEntries.entries.map(normalizeEntry).filter(Boolean)
       : [];
     const sortedRemote = sortEntries(remoteEntries);
 
     if (sortedRemote.length === 0 && localEntries.length > 0) {
       await setDoc(
         ref,
-        { entries: localEntries, updatedAt: new Date().toISOString() },
+        {
+          moodEntries: {
+            entries: localEntries,
+            updatedAt: new Date().toISOString(),
+          },
+        },
         { merge: true }
       );
       return localEntries;
@@ -111,28 +138,43 @@ export async function getEntries() {
     if (localEntries.length > sortedRemote.length) {
       await setDoc(
         ref,
-        { entries: localEntries, updatedAt: new Date().toISOString() },
+        {
+          moodEntries: {
+            entries: localEntries,
+            updatedAt: new Date().toISOString(),
+          },
+        },
         { merge: true }
       );
       return localEntries;
     }
 
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(sortedRemote));
+    await AsyncStorage.setItem(storageKey, JSON.stringify(sortedRemote));
     return sortedRemote;
   } catch {
     return localEntries;
   }
 }
 
-export async function saveEntries(entries) {
+export async function saveEntries(entries, modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
   const normalized = sortEntries((entries || []).map(normalizeEntry).filter(Boolean));
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  await AsyncStorage.setItem(getEntriesStorageKey(mode), JSON.stringify(normalized));
 
   const userDocId = getUserDocId(auth.currentUser);
   if (userDocId) {
     try {
-      const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.moodEntries);
-      await setDoc(ref, { entries: normalized, updatedAt: new Date().toISOString() }, { merge: true });
+      const ref = moodEntriesRef(userDocId, mode);
+      await setDoc(
+        ref,
+        {
+          moodEntries: {
+            entries: normalized,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        { merge: true }
+      );
     } catch {
       // Keep local save successful even if remote sync temporarily fails.
     }
@@ -148,13 +190,14 @@ export async function upsertEntry({
   note,
   actualLoggedAt,
   isBackfilled,
+  mode,
 }) {
   const safeDate = date || toDateKey(new Date());
   const safeSlot = slot || 'evening';
   const safeMood = clampMood(mood);
   const nowISO = new Date().toISOString();
 
-  const existing = await getEntries();
+  const existing = await getEntries(mode);
   const idx = existing.findIndex((item) => item.date === safeDate && item.slot === safeSlot);
 
   const entryPayload = {
@@ -182,24 +225,25 @@ export async function upsertEntry({
     });
   }
 
-  return saveEntries(existing);
+  return saveEntries(existing, mode);
 }
 
-export async function upsertTodayEntry({ mood, note }) {
+export async function upsertTodayEntry({ mood, note, mode }) {
   return upsertEntry({
     date: toDateKey(new Date()),
     slot: 'evening',
     mood,
     note,
     isBackfilled: false,
+    mode,
   });
 }
 
-export async function deleteEntry({ date, slot, id }) {
-  const existing = await getEntries();
+export async function deleteEntry({ date, slot, id, mode }) {
+  const existing = await getEntries(mode);
   const filtered = existing.filter((item) => {
     if (id) return item.id !== id;
     return !(item.date === date && item.slot === slot);
   });
-  return saveEntries(filtered);
+  return saveEntries(filtered, mode);
 }

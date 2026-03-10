@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,11 +13,13 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { COLORS } from "../../constants/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 
 export default function LoginScreen({ navigation }) {
   const { login, authLoading } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const passwordRef = useRef(null);
@@ -37,10 +39,10 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <LinearGradient
-      colors={["#0033ff", "#3e58c1", "#0e1b58"]}
+      colors={colors.authGradient}
       locations={[0, 0.5, 1]}
-      start={{ x: 1, y: 1 }} // bottom-right
-      end={{ x: 0, y: 0 }} // top-left
+      start={{ x: 1, y: 1 }}
+      end={{ x: 0, y: 0 }}
       style={styles.gradientBackground}
     >
       <SafeAreaView style={styles.safeArea}>
@@ -81,7 +83,7 @@ export default function LoginScreen({ navigation }) {
                 returnKeyType="next"
                 autoCapitalize="none"
                 autoCorrect={false}
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.textMuted}
                 onSubmitEditing={() => passwordRef.current?.focus()}
               />
 
@@ -94,7 +96,7 @@ export default function LoginScreen({ navigation }) {
                 secureTextEntry
                 autoCapitalize="none"
                 returnKeyType="done"
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.textMuted}
                 onSubmitEditing={handleLogin}
               />
 
@@ -104,10 +106,10 @@ export default function LoginScreen({ navigation }) {
                 disabled={authLoading}
               >
                 <LinearGradient
-                  colors={["#0033ff", "#3e58c1", "#0e1b58"]}
+                  colors={colors.authGradient}
                   locations={[0, 0.5, 1]}
-                  start={{ x: 1, y: 1 }} // bottom-right
-                  end={{ x: 0, y: 0 }} // top-left
+                  start={{ x: 1, y: 1 }}
+                  end={{ x: 0, y: 0 }}
                   style={styles.signInButtonGradient}
                 >
                   <Text style={styles.signInButtonText}>
@@ -146,153 +148,143 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  gradientBackground: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  keyboardContainer: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "flex-start",
-    paddingBottom: 130,
-  },
-  heroSection: {
-    paddingHorizontal: 22,
-    paddingTop: 30,
-    paddingBottom: 28,
-  },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  topRowText: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 14,
-  },
-  ghostButton: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 11,
-  },
-  ghostButtonText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  brandText: {
-    marginTop: 36,
-    textAlign: "center",
-    color: "#FFFFFF",
-    fontSize: 44,
-    fontWeight: "800",
-    letterSpacing: 0.3,
-  },
-  card: {
-    marginTop: 10,
-
-    borderRadius: 30,
-    backgroundColor: COLORS.surface,
-    paddingTop: 32,
-    paddingHorizontal: 20,
-    paddingBottom: 26,
-    minHeight: 520,
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: "800",
-    color: "#1B1C2B",
-    textAlign: "center",
-  },
-  subtitle: {
-    marginTop: 8,
-    marginBottom: 24,
-    color: "#6E7191",
-    textAlign: "center",
-    fontSize: 17,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E7E9F2",
-    borderRadius: 13,
-    paddingHorizontal: 15,
-    height: 54,
-    marginBottom: 12,
-    color: COLORS.text,
-    backgroundColor: "#FFFFFF",
-    fontSize: 16,
-  },
-  signInButton: {
-    borderRadius: 13,
-    overflow: "hidden",
-    marginTop: 4,
-  },
-  signInButtonGradient: {
-    height: 54,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  signInButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  disabled: {
-    opacity: 0.7,
-  },
-  forgotButton: {
-    marginTop: 18,
-    alignItems: "center",
-  },
-  forgotButtonText: {
-    color: "#70748F",
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  separatorWrap: {
-    marginTop: 22,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  separatorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#ECEEF5",
-  },
-  separatorText: {
-    marginHorizontal: 14,
-    color: "#99A1BA",
-    fontSize: 13,
-  },
-  socialRow: {
-    marginTop: 18,
-    flexDirection: "row",
-    gap: 10,
-  },
-  socialButton: {
-    flex: 1,
-    height: 50,
-    borderWidth: 1,
-    borderColor: "#ECEEF5",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-    backgroundColor: "#FFFFFF",
-  },
-  socialButtonText: {
-    color: "#27304A",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    gradientBackground: { flex: 1 },
+    safeArea: { flex: 1 },
+    keyboardContainer: { flex: 1 },
+    scrollView: { flex: 1 },
+    scrollContent: {
+      flexGrow: 1,
+      justifyContent: "flex-start",
+      paddingBottom: 130,
+    },
+    heroSection: {
+      paddingHorizontal: 22,
+      paddingTop: 30,
+      paddingBottom: 28,
+    },
+    topRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    topRowText: {
+      color: "rgba(255,255,255,0.82)",
+      fontSize: 14,
+    },
+    ghostButton: {
+      backgroundColor: "rgba(255,255,255,0.2)",
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 11,
+    },
+    ghostButtonText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    brandText: {
+      marginTop: 36,
+      textAlign: "center",
+      color: "#FFFFFF",
+      fontSize: 44,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+    },
+    card: {
+      marginTop: 10,
+      borderRadius: 30,
+      backgroundColor: colors.surface,
+      paddingTop: 32,
+      paddingHorizontal: 20,
+      paddingBottom: 26,
+      minHeight: 520,
+    },
+    title: {
+      fontSize: 40,
+      fontWeight: "800",
+      color: colors.text,
+      textAlign: "center",
+    },
+    subtitle: {
+      marginTop: 8,
+      marginBottom: 24,
+      color: colors.textMuted,
+      textAlign: "center",
+      fontSize: 17,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 13,
+      paddingHorizontal: 15,
+      height: 54,
+      marginBottom: 12,
+      color: colors.text,
+      backgroundColor: colors.background,
+      fontSize: 16,
+    },
+    signInButton: {
+      borderRadius: 13,
+      overflow: "hidden",
+      marginTop: 4,
+    },
+    signInButtonGradient: {
+      height: 54,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    signInButtonText: {
+      color: "#FFFFFF",
+      fontSize: 17,
+      fontWeight: "700",
+    },
+    disabled: { opacity: 0.7 },
+    forgotButton: {
+      marginTop: 18,
+      alignItems: "center",
+    },
+    forgotButtonText: {
+      color: colors.textMuted,
+      fontSize: 15,
+      fontWeight: "500",
+    },
+    separatorWrap: {
+      marginTop: 22,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    separatorLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    separatorText: {
+      marginHorizontal: 14,
+      color: colors.textMuted,
+      fontSize: 13,
+    },
+    socialRow: {
+      marginTop: 18,
+      flexDirection: "row",
+      gap: 10,
+    },
+    socialButton: {
+      flex: 1,
+      height: 50,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
+      gap: 8,
+      backgroundColor: colors.background,
+    },
+    socialButtonText: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: "600",
+    },
+  });

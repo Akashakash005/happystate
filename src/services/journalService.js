@@ -1,10 +1,31 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { DB_SCHEMA, getUserDocId } from '../constants/dataSchema';
+import {
+  DB_SCHEMA,
+  getCharacterCollection,
+  getUserDocId,
+  normalizeCharacterMode,
+} from '../constants/dataSchema';
+import { refreshCircleState } from './circleService';
 import { maybeRefreshLongTermSummary, saveRollingContext } from './memoryService';
+import { getActiveCharacterMode } from './characterModeService';
 
 const STORAGE_KEY = '@happy_state_journal_sessions_v1';
+
+function resolveJournalStorageKey(journalMode = 'public') {
+  return `${STORAGE_KEY}_${normalizeCharacterMode(journalMode)}`;
+}
+
+function journalRef(userDocId, journalMode = 'public') {
+  return doc(
+    db,
+    DB_SCHEMA.users,
+    userDocId,
+    getCharacterCollection(journalMode),
+    DB_SCHEMA.appData
+  );
+}
 
 function makeId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -170,10 +191,12 @@ function sortSessions(sessions) {
   return [...sessions].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
 
-export async function getJournalSessions() {
+export async function getJournalSessions(journalMode = null) {
+  const activeMode = normalizeCharacterMode(journalMode || await getActiveCharacterMode());
+  const storageKey = resolveJournalStorageKey(activeMode);
   const localSessions = await (async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await AsyncStorage.getItem(storageKey);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       const normalized = Array.isArray(parsed)
@@ -189,25 +212,43 @@ export async function getJournalSessions() {
   if (!userDocId) return localSessions;
 
   try {
-    const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.journalSessions);
+    const ref = journalRef(userDocId, activeMode);
     const snap = await getDoc(ref);
 
     if (!snap.exists()) {
       if (localSessions.length) {
-        await setDoc(ref, { sessions: localSessions, updatedAt: new Date().toISOString() }, { merge: true });
+        await setDoc(
+          ref,
+          {
+            journalSessions: {
+              sessions: localSessions,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+          { merge: true }
+        );
       }
       return localSessions;
     }
 
-    const remoteSessions = Array.isArray(snap.data()?.sessions)
-      ? snap.data().sessions.map(normalizeSession).filter(Boolean)
-      : [];
+    const remoteSessions = (
+      Array.isArray(snap.data()?.journalSessions?.sessions)
+        ? snap.data().journalSessions.sessions
+        : []
+    )
+      .map(normalizeSession)
+      .filter(Boolean);
     const sortedRemote = sortSessions(remoteSessions);
 
     if (sortedRemote.length === 0 && localSessions.length > 0) {
       await setDoc(
         ref,
-        { sessions: localSessions, updatedAt: new Date().toISOString() },
+        {
+          journalSessions: {
+            sessions: localSessions,
+            updatedAt: new Date().toISOString(),
+          },
+        },
         { merge: true }
       );
       return localSessions;
@@ -216,28 +257,43 @@ export async function getJournalSessions() {
     if (localSessions.length > sortedRemote.length) {
       await setDoc(
         ref,
-        { sessions: localSessions, updatedAt: new Date().toISOString() },
+        {
+          journalSessions: {
+            sessions: localSessions,
+            updatedAt: new Date().toISOString(),
+          },
+        },
         { merge: true }
       );
       return localSessions;
     }
 
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(sortedRemote));
+    await AsyncStorage.setItem(storageKey, JSON.stringify(sortedRemote));
     return sortedRemote;
   } catch {
     return localSessions;
   }
 }
 
-export async function saveJournalSessions(sessions) {
+export async function saveJournalSessions(sessions, journalMode = null) {
+  const activeMode = normalizeCharacterMode(journalMode || await getActiveCharacterMode());
   const normalized = sortSessions((sessions || []).map(normalizeSession).filter(Boolean));
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  await AsyncStorage.setItem(resolveJournalStorageKey(activeMode), JSON.stringify(normalized));
 
   const userDocId = getUserDocId(auth.currentUser);
   if (userDocId) {
     try {
-      const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.journalSessions);
-      await setDoc(ref, { sessions: normalized, updatedAt: new Date().toISOString() }, { merge: true });
+      const ref = journalRef(userDocId, activeMode);
+      await setDoc(
+        ref,
+        {
+          journalSessions: {
+            sessions: normalized,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        { merge: true }
+      );
     } catch {
       // Keep local save successful even if remote sync temporarily fails.
     }
@@ -246,8 +302,9 @@ export async function saveJournalSessions(sessions) {
   return normalized;
 }
 
-export async function createJournalSession(initialTitle = 'New reflection') {
-  const sessions = await getJournalSessions();
+export async function createJournalSession(initialTitle = 'New reflection', journalMode = null) {
+  const activeMode = normalizeCharacterMode(journalMode || await getActiveCharacterMode());
+  const sessions = await getJournalSessions(activeMode);
   const now = new Date().toISOString();
 
   const session = {
@@ -260,34 +317,36 @@ export async function createJournalSession(initialTitle = 'New reflection') {
   };
 
   sessions.unshift(session);
-  await saveJournalSessions(sessions);
+  await saveJournalSessions(sessions, activeMode);
   return session;
 }
 
-export async function deleteJournalSession(sessionId) {
-  const sessions = await getJournalSessions();
+export async function deleteJournalSession(sessionId, journalMode = null) {
+  const activeMode = normalizeCharacterMode(journalMode || await getActiveCharacterMode());
+  const sessions = await getJournalSessions(activeMode);
   const filtered = sessions.filter((session) => session.id !== sessionId);
-  await saveJournalSessions(filtered);
+  await saveJournalSessions(filtered, activeMode);
   return filtered;
 }
 
-export async function addJournalExchange({ sessionId, userText, analysis }) {
-  const sessions = await getJournalSessions();
+export async function addJournalExchange({ sessionId, userText, analysis, journalMode = null }) {
+  const activeMode = normalizeCharacterMode(journalMode || await getActiveCharacterMode());
+  const sessions = await getJournalSessions(activeMode);
   const now = new Date().toISOString();
 
   let index = sessions.findIndex((session) => session.id === sessionId);
 
   if (index < 0) {
-    const created = await createJournalSession('New reflection');
-    const fresh = await getJournalSessions();
+    const created = await createJournalSession('New reflection', activeMode);
+    const fresh = await getJournalSessions(activeMode);
     index = fresh.findIndex((session) => session.id === created.id);
     if (index < 0) return { sessions: fresh, sessionId: created.id };
     fresh[index] = {
       ...fresh[index],
       updatedAt: now,
     };
-    await saveJournalSessions(fresh);
-    return addJournalExchange({ sessionId: created.id, userText, analysis });
+    await saveJournalSessions(fresh, activeMode);
+    return addJournalExchange({ sessionId: created.id, userText, analysis, journalMode: activeMode });
   }
 
   const session = sessions[index];
@@ -335,24 +394,32 @@ export async function addJournalExchange({ sessionId, userText, analysis }) {
   const nextSessions = [...sessions];
   nextSessions[index] = updatedSession;
 
-  const saved = await saveJournalSessions(nextSessions);
-  try {
-    await saveRollingContext({
-      recentMoodTrend7d: intelligence.moodTrend || '',
-      recentEntriesSummary: intelligence.lastMoodTag
-        ? `Recent mood tag: ${intelligence.lastMoodTag}`
-        : '',
-      sessionSummary: intelligence.summary || '',
-      activeFocus: userText || '',
-    });
-  } catch {
-    // Memory refresh should not block chat persistence.
+  const saved = await saveJournalSessions(nextSessions, activeMode);
+  if (activeMode !== 'private') {
+    try {
+      await saveRollingContext({
+        recentMoodTrend7d: intelligence.moodTrend || '',
+        recentEntriesSummary: intelligence.lastMoodTag
+          ? `Recent mood tag: ${intelligence.lastMoodTag}`
+          : '',
+        sessionSummary: intelligence.summary || '',
+        activeFocus: userText || '',
+      }, activeMode);
+    } catch {
+      // Memory refresh should not block chat persistence.
+    }
+    try {
+      const allJournalEntries = saved.flatMap((s) => (Array.isArray(s?.entries) ? s.entries : []));
+      maybeRefreshLongTermSummary({ journalEntries: allJournalEntries, mode: activeMode }).catch(() => {});
+    } catch {
+      // Long-term compression is best-effort and should never block user flow.
+    }
   }
   try {
     const allJournalEntries = saved.flatMap((s) => (Array.isArray(s?.entries) ? s.entries : []));
-    maybeRefreshLongTermSummary({ journalEntries: allJournalEntries }).catch(() => {});
+    refreshCircleState({ journalEntries: allJournalEntries, mode: activeMode }).catch(() => {});
   } catch {
-    // Long-term compression is best-effort and should never block user flow.
+    // Circle extraction should never block chat persistence.
   }
   return {
     sessions: saved,
@@ -362,8 +429,8 @@ export async function addJournalExchange({ sessionId, userText, analysis }) {
   };
 }
 
-export async function getAllJournalEntries() {
-  const sessions = await getJournalSessions();
+export async function getAllJournalEntries(journalMode = null) {
+  const sessions = await getJournalSessions(journalMode);
   const all = sessions.flatMap((session) =>
     (session.entries || []).map((entry) => ({
       ...entry,

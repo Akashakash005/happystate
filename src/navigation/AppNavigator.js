@@ -10,13 +10,14 @@ import InsightsScreen from "../screens/InsightsScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import JournalChatScreen from "../screens/JournalChatScreen";
 import CircleScreen from "../screens/CircleScreen";
-import { COLORS } from "../constants/colors";
+import { useTheme } from "../context/ThemeContext";
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function MainTabs() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   const getTabIcon = (routeName, focused, color, size) => {
     if (routeName === "Home") {
@@ -68,7 +69,7 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={({ route, navigation }) => ({
         headerTitleAlign: "left",
-        headerStyle: { backgroundColor: COLORS.primary },
+        headerStyle: { backgroundColor: colors.primary },
         headerTintColor: "#FFFFFF",
         headerTitleStyle: { color: "#FFFFFF", fontWeight: "700", fontSize: 22 },
         headerLeftContainerStyle: { paddingLeft: 20 },
@@ -87,8 +88,8 @@ function MainTabs() {
           );
         },
         tabBarStyle: {
-          backgroundColor: COLORS.primary,
-          borderTopColor: COLORS.primary,
+          backgroundColor: colors.primary,
+          borderTopColor: colors.primary,
           height: 62 + insets.bottom,
           paddingBottom: Math.max(8, insets.bottom),
           paddingTop: 8,
@@ -100,7 +101,7 @@ function MainTabs() {
         tabBarIcon: ({ focused, color, size }) =>
           getTabIcon(route.name, focused, color, size),
         tabBarActiveTintColor: "#FFFFFF",
-        tabBarInactiveTintColor: "rgba(255,255,255,0.72)",
+        tabBarInactiveTintColor: colors.tabInactive,
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
@@ -113,12 +114,14 @@ function MainTabs() {
 }
 
 export default function AppNavigator({ needsProfileSetup = false }) {
+  const { colors } = useTheme();
+
   return (
     <Stack.Navigator
       initialRouteName={needsProfileSetup ? "ProfileSetup" : "MainTabs"}
       screenOptions={{
         headerTitleAlign: "left",
-        headerStyle: { backgroundColor: COLORS.primary },
+        headerStyle: { backgroundColor: colors.primary },
         headerTintColor: "#FFFFFF",
         headerTitleStyle: { color: "#FFFFFF", fontWeight: "700", fontSize: 22 },
         headerShadowVisible: false,

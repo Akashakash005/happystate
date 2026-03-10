@@ -1,13 +1,21 @@
 import {
+  GROK_JOURNAL_ANALYSIS_SYSTEM_PROMPT,
   JOURNAL_ANALYSIS_SYSTEM_PROMPT,
   NAME_EXTRACTION_SYSTEM_PROMPT,
+  PRIVATE_CIRCLE_NAME_EXTRACTION_SYSTEM_PROMPT,
+  PUBLIC_CIRCLE_NAME_EXTRACTION_SYSTEM_PROMPT,
   buildJournalUserPrompt,
   buildNameExtractionUserPrompt,
 } from "../constants/aiPrompts";
 import { buildJournalContext } from "./journalContextService";
+import { getActiveCharacterMode } from "./characterModeService";
+import { chatWithPuter } from "./puterService";
+import { getAiQuotaErrorDetails } from "../utils/aiErrorUtils";
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || "";
 const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || "gemini-2.5-flash";
+let geminiQuotaCooldownUntil = 0;
+let geminiQuotaMessage = "";
 const ALLOWED_MOOD_TAGS = new Set([
   "happy",
   "stressed",
@@ -122,6 +130,18 @@ function validateNameExtractionPayload(parsed) {
 }
 
 async function geminiChat({ systemPrompt, userPrompt, temperature = 0.3 }) {
+  const now = Date.now();
+  if (geminiQuotaCooldownUntil > now) {
+    const error = new Error(
+      geminiQuotaMessage ||
+        "The AI is temporarily busy and the request limit has been hit. Try again after some time.",
+    );
+    error.code = 429;
+    error.status = "RESOURCE_EXHAUSTED";
+    error.isQuotaError = true;
+    throw error;
+  }
+
   const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn strict JSON only.`;
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
@@ -137,6 +157,16 @@ async function geminiChat({ systemPrompt, userPrompt, temperature = 0.3 }) {
 
   if (!response.ok) {
     const errorText = await response.text();
+    const quotaDetails = getAiQuotaErrorDetails({ message: errorText, code: response.status });
+    if (quotaDetails.isQuotaError) {
+      geminiQuotaCooldownUntil = Date.now() + Math.max(15, quotaDetails.retrySeconds || 30) * 1000;
+      geminiQuotaMessage = quotaDetails.message;
+      const error = new Error(quotaDetails.message);
+      error.code = 429;
+      error.status = "RESOURCE_EXHAUSTED";
+      error.isQuotaError = true;
+      throw error;
+    }
     throw new Error(errorText || "Gemini request failed.");
   }
 
@@ -149,7 +179,29 @@ async function geminiChat({ systemPrompt, userPrompt, temperature = 0.3 }) {
   );
 }
 
-async function modelChat(params) {
+export function getGeminiQuotaState() {
+  const now = Date.now();
+  const active = geminiQuotaCooldownUntil > now;
+  return {
+    active,
+    retrySeconds: active
+      ? Math.max(1, Math.ceil((geminiQuotaCooldownUntil - now) / 1000))
+      : 0,
+    message: active ? geminiQuotaMessage : "",
+  };
+}
+
+async function grokChatViaPuter({ systemPrompt, userPrompt }) {
+  const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn strict JSON only.`;
+  return chatWithPuter(fullPrompt, {
+    model: "grok-4-fast",
+  });
+}
+
+async function modelChat(params, journalMode = "public") {
+  if (journalMode === "private") {
+    return grokChatViaPuter(params);
+  }
   if (GEMINI_API_KEY) {
     return geminiChat(params);
   }
@@ -209,12 +261,30 @@ function fallbackExtractNames(text) {
   return [...new Set(matches.filter((word) => !stopWords.has(word)))];
 }
 
+function getCircleNameExtractionPrompt(journalMode = "public") {
+  if (journalMode === "private") {
+    return (
+      String(PRIVATE_CIRCLE_NAME_EXTRACTION_SYSTEM_PROMPT || "").trim() ||
+      PUBLIC_CIRCLE_NAME_EXTRACTION_SYSTEM_PROMPT
+    );
+  }
+
+  return (
+    String(PUBLIC_CIRCLE_NAME_EXTRACTION_SYSTEM_PROMPT || "").trim() ||
+    NAME_EXTRACTION_SYSTEM_PROMPT
+  );
+}
+
 export async function analyzeJournalEntry(entryText) {
-  return analyzeJournalEntryWithContext(entryText, { history: [] });
+  return analyzeJournalEntryWithContext(entryText, {
+    history: [],
+    journalMode: "public",
+  });
 }
 
 export async function analyzeJournalEntryWithContext(entryText, options = {}) {
   const history = Array.isArray(options.history) ? options.history : [];
+  const journalMode = options.journalMode === "private" ? "private" : "public";
 
   try {
     let context = {};
@@ -223,32 +293,48 @@ export async function analyzeJournalEntryWithContext(entryText, options = {}) {
     } catch {
       context = {};
     }
-    const content = await modelChat({
-      systemPrompt: JOURNAL_ANALYSIS_SYSTEM_PROMPT,
-      userPrompt: buildJournalUserPrompt({ entryText, history, context }),
-      temperature: 0.25,
-    });
+    const content = await modelChat(
+      {
+        systemPrompt:
+          journalMode === "private"
+            ? GROK_JOURNAL_ANALYSIS_SYSTEM_PROMPT
+            : JOURNAL_ANALYSIS_SYSTEM_PROMPT,
+        userPrompt: buildJournalUserPrompt({ entryText, history, context }),
+        temperature: 0.25,
+      },
+      journalMode,
+    );
     const parsed = safeJsonParse(content);
     const normalized = validateJournalAnalysisPayload(parsed);
     if (!normalized) {
+      if (journalMode === "private") {
+        throw new Error("Private journal returned an invalid Grok response.");
+      }
       return fallbackAnalysis(entryText);
     }
 
     return normalized;
-  } catch {
+  } catch (error) {
+    if (journalMode === "private") {
+      throw error;
+    }
     return fallbackAnalysis(entryText);
   }
 }
 
-export async function extractPeopleNames(text) {
+export async function extractPeopleNames(text, options = {}) {
   if (!String(text).trim()) return [];
 
   try {
+    const journalMode =
+      options?.journalMode ||
+      (options?.mode === "private" ? "private" : null) ||
+      (await getActiveCharacterMode());
     const content = await modelChat({
-      systemPrompt: NAME_EXTRACTION_SYSTEM_PROMPT,
+      systemPrompt: getCircleNameExtractionPrompt(journalMode),
       userPrompt: buildNameExtractionUserPrompt(text),
       temperature: 0,
-    });
+    }, journalMode);
 
     const parsed = safeJsonParse(content);
     const normalized = validateNameExtractionPayload(parsed);

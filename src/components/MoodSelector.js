@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { MOOD_OPTIONS } from '../constants/moods';
-import { COLORS } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 
 export default function MoodSelector({ value, onChange }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.row}>
       {MOOD_OPTIONS.map((mood) => {
@@ -23,24 +26,24 @@ export default function MoodSelector({ value, onChange }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   item: {
     flex: 1,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 6,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     alignItems: 'center',
   },
   itemSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#EFF6FF',
+    borderColor: colors.primary,
+    backgroundColor: colors.inputAccent,
   },
-  value: { fontSize: 18, fontWeight: '700', color: COLORS.text },
-  valueSelected: { color: COLORS.primary },
-  label: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, textAlign: 'center' },
-  labelSelected: { color: COLORS.primary },
+  value: { fontSize: 18, fontWeight: '700', color: colors.text },
+  valueSelected: { color: colors.primary },
+  label: { fontSize: 11, color: colors.textMuted, marginTop: 2, textAlign: 'center' },
+  labelSelected: { color: colors.primary },
 });

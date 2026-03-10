@@ -17,9 +17,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import MoodSelector from "../components/MoodSelector";
-import { COLORS } from "../constants/colors";
 import { getMoodMeta } from "../constants/moods";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { getProfile } from "../services/profileService";
 import {
   deleteEntry,
@@ -69,6 +69,8 @@ function getSlotByHour(hour) {
 
 export default function HomeScreen() {
   const { user, profile } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [entries, setEntries] = useState([]);
   const [profileName, setProfileName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -91,8 +93,13 @@ export default function HomeScreen() {
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [historyFilter, setHistoryFilter] = useState("week");
-  const initialCustomRange = useMemo(() => getDateRange("week", new Date()), []);
-  const [customStartDate, setCustomStartDate] = useState(initialCustomRange.start);
+  const initialCustomRange = useMemo(
+    () => getDateRange("week", new Date()),
+    [],
+  );
+  const [customStartDate, setCustomStartDate] = useState(
+    initialCustomRange.start,
+  );
   const [customEndDate, setCustomEndDate] = useState(initialCustomRange.end);
   const [showCustomStartPicker, setShowCustomStartPicker] = useState(false);
   const [showCustomEndPicker, setShowCustomEndPicker] = useState(false);
@@ -354,7 +361,7 @@ export default function HomeScreen() {
         </Text>
 
         <LinearGradient
-          colors={["#7b91eb", "#6E8BFF", "#E3E8FF"]}
+          colors={colors.cardGradientAlt}
           locations={[0, 0.5, 1]}
           start={{ x: 1, y: 1 }} // bottom-right
           end={{ x: 0, y: 0 }} // top-left
@@ -415,8 +422,11 @@ export default function HomeScreen() {
             value={entryNote}
             onChangeText={setEntryNote}
             placeholder="Start with a thought, a feeling, or a moment…"
-            placeholderTextColor={COLORS.textMuted}
-            style={[styles.input, existingEntryForSelection && styles.inputDisabled]}
+            placeholderTextColor={colors.textMuted}
+            style={[
+              styles.input,
+              existingEntryForSelection && styles.inputDisabled,
+            ]}
             multiline
             maxLength={180}
             editable={!existingEntryForSelection}
@@ -536,7 +546,7 @@ export default function HomeScreen() {
                 return (
                   <LinearGradient
                     key={entry.id}
-                    colors={["#7b91eb", "#6E8BFF", "#E3E8FF"]}
+                    colors={colors.cardGradientAlt}
                     locations={[0, 0.5, 1]}
                     start={{ x: 1, y: 1 }} // bottom-right
                     end={{ x: 0, y: 0 }} // top-left
@@ -554,7 +564,7 @@ export default function HomeScreen() {
                           <Ionicons
                             name="create-outline"
                             size={16}
-                            color={COLORS.primary}
+                            color={colors.primary}
                           />
                         </Pressable>
                         <Pressable
@@ -567,7 +577,7 @@ export default function HomeScreen() {
                           <Ionicons
                             name="trash-outline"
                             size={16}
-                            color={COLORS.danger}
+                            color={colors.danger}
                           />
                         </Pressable>
                       </View>
@@ -601,7 +611,7 @@ export default function HomeScreen() {
       >
         <View style={styles.modalOverlay}>
           <LinearGradient
-            colors={["#7b91eb", "#6E8BFF", "#E3E8FF"]}
+            colors={colors.cardGradientAlt}
             locations={[0, 0.5, 1]}
             start={{ x: 1, y: 1 }}
             end={{ x: 0, y: 0 }}
@@ -659,7 +669,7 @@ export default function HomeScreen() {
               value={editNote}
               onChangeText={setEditNote}
               placeholder="Update your note..."
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={colors.textMuted}
               style={styles.input}
               multiline
               maxLength={180}
@@ -725,12 +735,12 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 36 },
   welcomeText: {
     paddingLeft: 5,
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "800",
     fontSize: 20,
     marginBottom: 10,
@@ -741,32 +751,32 @@ const styles = StyleSheet.create({
     fontSize: 25,
   },
   formCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     padding: 14,
     marginBottom: 16,
   },
-  title: { fontSize: 26, fontWeight: "800", color: COLORS.text },
+  title: { fontSize: 26, fontWeight: "800", color: colors.text },
   metaText: {
     marginTop: 4,
     marginBottom: 10,
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "600",
     paddingHorizontal: 10,
   },
   dateButton: {
     alignSelf: "flex-start",
     borderWidth: 1,
-    borderColor: "#93C5FD",
+    borderColor: colors.inputAccentBorder,
     borderRadius: 10,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.inputAccent,
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginBottom: 10,
   },
-  dateButtonText: { color: COLORS.primary, fontWeight: "700" },
+  dateButtonText: { color: colors.primary, fontWeight: "700" },
   slotRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -776,35 +786,35 @@ const styles = StyleSheet.create({
   slotButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingVertical: 10,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.inputSurface,
     alignItems: "center",
   },
   slotButtonActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: "#EFF6FF",
+    borderColor: colors.primary,
+    backgroundColor: colors.inputAccent,
   },
   slotButtonText: {
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     fontWeight: "600",
     fontSize: 12,
   },
   slotButtonTextActive: {
-    color: COLORS.primary,
+    color: colors.primary,
   },
   input: {
     marginTop: 12,
     minHeight: 86,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
     textAlignVertical: "top",
-    color: COLORS.text,
-    backgroundColor: "#F8FAFC",
+    color: colors.text,
+    backgroundColor: colors.inputSurface,
   },
   inputDisabled: {
     opacity: 0.6,
@@ -821,22 +831,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#F8FAFC",
+    borderColor: colors.border,
+    backgroundColor: colors.inputSurface,
   },
-  secondaryButtonText: { color: COLORS.textMuted, fontWeight: "700" },
+  secondaryButtonText: { color: colors.textMuted, fontWeight: "700" },
   primaryButton: {
     flex: 1,
     borderRadius: 12,
     height: 46,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
   },
   primaryButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 16 },
   buttonDisabled: { opacity: 0.7 },
   lockedHint: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "700",
     marginBottom: 8,
     fontSize: 12,
@@ -844,7 +854,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: 8,
   },
   historyFilterRow: {
@@ -855,26 +865,26 @@ const styles = StyleSheet.create({
   },
   historyFilterChip: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#F8FAFC",
+    borderColor: colors.border,
+    backgroundColor: colors.inputSurface,
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
   historyFilterChipActive: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#93C5FD",
+    backgroundColor: colors.inputAccent,
+    borderColor: colors.inputAccentBorder,
   },
   historyFilterText: {
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     fontWeight: "600",
     fontSize: 12,
   },
   historyFilterTextActive: {
-    color: COLORS.primary,
+    color: colors.primary,
   },
   historyRangeText: {
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     fontWeight: "600",
     marginBottom: 8,
     fontSize: 12,
@@ -888,36 +898,36 @@ const styles = StyleSheet.create({
   customDateButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 10,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.inputSurface,
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
   customDateText: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "600",
     fontSize: 12,
   },
   empty: {
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 12,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     padding: 14,
   },
-  emptyText: { color: COLORS.textMuted },
+  emptyText: { color: colors.textMuted },
   dateGroup: { marginBottom: 14 },
   dateHeader: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "800",
     fontSize: 16,
     marginBottom: 8,
   },
   entryCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
@@ -927,7 +937,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  entrySlot: { color: COLORS.text, fontWeight: "700" },
+  entrySlot: { color: colors.text, fontWeight: "700" },
   entryTopActions: {
     flexDirection: "row",
     gap: 8,
@@ -937,14 +947,14 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
   deleteIconActionButton: {
-    borderColor: "#FCA5A5",
-    backgroundColor: "#FEF2F2",
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSurface,
   },
   badgeText: {
     color: "#FFFFFF",
@@ -953,7 +963,7 @@ const styles = StyleSheet.create({
   },
   entryNote: {
     marginTop: 8,
-    color: COLORS.text,
+    color: colors.text,
     lineHeight: 20,
     fontWeight: "700",
     fontStyle: "italic",
@@ -967,7 +977,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    backgroundColor: colors.overlay,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 14,
@@ -976,28 +986,28 @@ const styles = StyleSheet.create({
     width: "100%",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     padding: 14,
   },
   deleteModalCard: {
     width: "100%",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     padding: 16,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   deleteModalTitle: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "800",
     fontSize: 18,
   },
   deleteModalMessage: {
     marginTop: 8,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   deleteConfirmButton: {
-    backgroundColor: COLORS.danger,
+    backgroundColor: colors.danger,
   },
 });

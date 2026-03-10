@@ -84,6 +84,7 @@ function moodLabelFromAverage(avgMood) {
 
 export async function buildCircle(entries, options = {}) {
   const extractor = options.extractor || extractPeopleNames;
+  const journalMode = options.journalMode === 'private' ? 'private' : 'public';
 
   const map = new Map();
 
@@ -91,7 +92,7 @@ export async function buildCircle(entries, options = {}) {
     const text = String(entry?.text || '').trim();
     if (!text) continue;
 
-    const extracted = await extractor(text);
+    const extracted = await extractor(text, { journalMode });
     const extractedNames = [...new Set((extracted || []).map(normalizeName).filter(Boolean))];
     const relationNames = extractRelationMentions(text);
     const names = [...new Set([...extractedNames, ...relationNames])];
@@ -144,6 +145,7 @@ export async function buildCircle(entries, options = {}) {
         )
         : 0.5;
       return {
+        key: canonicalKey(item.person),
         person: item.person,
         mentionCount: item.mentionCount,
         avgMood,

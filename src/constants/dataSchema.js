@@ -1,5 +1,9 @@
 export const DB_SCHEMA = {
   users: 'users',
+  characters: {
+    public: 'publicCharacter',
+    private: 'privateCharacter',
+  },
   appData: 'appData',
   memory: 'memory',
   docs: {
@@ -20,14 +24,31 @@ export function getUserDocId({ email, uid } = {}) {
   return normalizedEmail || String(uid || '').trim();
 }
 
-export function getUserPaths(user) {
+export function normalizeCharacterMode(mode) {
+  return mode === 'private' ? 'private' : 'public';
+}
+
+export function getCharacterCollection(mode = 'public') {
+  return DB_SCHEMA.characters[normalizeCharacterMode(mode)];
+}
+
+export function getCharacterDocSegments(userDocId, mode = 'public') {
+  return [DB_SCHEMA.users, userDocId, getCharacterCollection(mode)];
+}
+
+export function getCharacterDocPath(userDocId, mode = 'public', branch = DB_SCHEMA.appData, docId = '') {
+  const parts = [...getCharacterDocSegments(userDocId, mode), branch];
+  if (docId) parts.push(docId);
+  return parts.join('/');
+}
+
+export function getUserPaths(user, mode = 'public') {
   const userDocId = getUserDocId(user);
+  const characterRoot = `${DB_SCHEMA.users}/${userDocId}/${getCharacterCollection(mode)}`;
   return {
     user: `${DB_SCHEMA.users}/${userDocId}`,
-    profile: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.appData}/${DB_SCHEMA.docs.profile}`,
-    moodEntries: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.appData}/${DB_SCHEMA.docs.moodEntries}`,
-    journalSessions: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.appData}/${DB_SCHEMA.docs.journalSessions}`,
-    longTermSummary: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.memory}/${DB_SCHEMA.docs.longTermSummary}`,
-    rollingContext: `${DB_SCHEMA.users}/${userDocId}/${DB_SCHEMA.memory}/${DB_SCHEMA.docs.rollingContext}`,
+    character: characterRoot,
+    appData: `${characterRoot}/${DB_SCHEMA.appData}`,
+    memory: `${characterRoot}/${DB_SCHEMA.memory}`,
   };
 }

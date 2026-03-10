@@ -1,9 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { DB_SCHEMA, getUserDocId } from '../constants/dataSchema';
+import {
+  DB_SCHEMA,
+  getCharacterCollection,
+  getUserDocId,
+  normalizeCharacterMode,
+} from '../constants/dataSchema';
 import { getProfile } from './profileService';
 import { getEntries } from './storageService';
+import { getActiveCharacterMode } from './characterModeService';
 
 const LONG_TERM_KEY = '@happy_state_memory_long_term_v1';
 const ROLLING_KEY = '@happy_state_memory_rolling_v1';
@@ -116,29 +122,31 @@ function normalizeRollingContext(data = {}) {
   };
 }
 
-function memoryRefs(userDocId) {
+function getLongTermStorageKey(mode = 'public') {
+  return `${LONG_TERM_KEY}_${normalizeCharacterMode(mode)}`;
+}
+
+function getRollingStorageKey(mode = 'public') {
+  return `${ROLLING_KEY}_${normalizeCharacterMode(mode)}`;
+}
+
+function memoryRefs(userDocId, mode = 'public') {
   return {
-    longTermRef: doc(
+    memoryRef: doc(
       db,
       DB_SCHEMA.users,
       userDocId,
-      DB_SCHEMA.memory,
-      DB_SCHEMA.docs.longTermSummary
-    ),
-    rollingRef: doc(
-      db,
-      DB_SCHEMA.users,
-      userDocId,
-      DB_SCHEMA.memory,
-      DB_SCHEMA.docs.rollingContext
+      getCharacterCollection(mode),
+      DB_SCHEMA.memory
     ),
   };
 }
 
-export async function getMemoryContext() {
+export async function getMemoryContext(modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
   const localLongTerm = await (async () => {
     try {
-      const raw = await AsyncStorage.getItem(LONG_TERM_KEY);
+      const raw = await AsyncStorage.getItem(getLongTermStorageKey(mode));
       return raw ? normalizeLongTermSummary(JSON.parse(raw)) : DEFAULT_LONG_TERM_SUMMARY;
     } catch {
       return DEFAULT_LONG_TERM_SUMMARY;
@@ -147,7 +155,7 @@ export async function getMemoryContext() {
 
   const localRolling = await (async () => {
     try {
-      const raw = await AsyncStorage.getItem(ROLLING_KEY);
+      const raw = await AsyncStorage.getItem(getRollingStorageKey(mode));
       return raw ? normalizeRollingContext(JSON.parse(raw)) : DEFAULT_ROLLING_CONTEXT;
     } catch {
       return DEFAULT_ROLLING_CONTEXT;
@@ -160,19 +168,19 @@ export async function getMemoryContext() {
   }
 
   try {
-    const { longTermRef, rollingRef } = memoryRefs(userDocId);
-    const [longSnap, rollingSnap] = await Promise.all([getDoc(longTermRef), getDoc(rollingRef)]);
+    const { memoryRef } = memoryRefs(userDocId, mode);
+    const memorySnap = await getDoc(memoryRef);
 
-    const longTermSummary = longSnap.exists()
-      ? normalizeLongTermSummary(longSnap.data())
+    const longTermSummary = memorySnap.exists()
+      ? normalizeLongTermSummary(memorySnap.data()?.longTermSummary || {})
       : localLongTerm;
-    const rollingContext = rollingSnap.exists()
-      ? normalizeRollingContext(rollingSnap.data())
+    const rollingContext = memorySnap.exists()
+      ? normalizeRollingContext(memorySnap.data()?.rollingContext || {})
       : localRolling;
 
     await Promise.all([
-      AsyncStorage.setItem(LONG_TERM_KEY, JSON.stringify(longTermSummary)),
-      AsyncStorage.setItem(ROLLING_KEY, JSON.stringify(rollingContext)),
+      AsyncStorage.setItem(getLongTermStorageKey(mode), JSON.stringify(longTermSummary)),
+      AsyncStorage.setItem(getRollingStorageKey(mode), JSON.stringify(rollingContext)),
     ]);
 
     return { longTermSummary, rollingContext };
@@ -181,12 +189,13 @@ export async function getMemoryContext() {
   }
 }
 
-export async function saveLongTermSummary(partialData = {}) {
+export async function saveLongTermSummary(partialData = {}, modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
   const source = String(partialData?.__source || 'manual');
   const cleanPartial = { ...(partialData || {}) };
   delete cleanPartial.__source;
 
-  const current = (await getMemoryContext()).longTermSummary;
+  const current = (await getMemoryContext(mode)).longTermSummary;
   const normalizedCurrent = normalizeLongTermSummary(current || {});
 
   const nextOverrides = { ...(normalizedCurrent.userOverrides || {}) };
@@ -213,13 +222,13 @@ export async function saveLongTermSummary(partialData = {}) {
     updatedAt: new Date().toISOString(),
   });
 
-  await AsyncStorage.setItem(LONG_TERM_KEY, JSON.stringify(next));
+  await AsyncStorage.setItem(getLongTermStorageKey(mode), JSON.stringify(next));
 
   const userDocId = getUserDocId(auth.currentUser);
   if (userDocId) {
     try {
-      const { longTermRef } = memoryRefs(userDocId);
-      await setDoc(longTermRef, next, { merge: true });
+      const { memoryRef } = memoryRefs(userDocId, mode);
+      await setDoc(memoryRef, { longTermSummary: next }, { merge: true });
     } catch {
       // Local save remains source of continuity when remote sync is unavailable.
     }
@@ -228,20 +237,21 @@ export async function saveLongTermSummary(partialData = {}) {
   return next;
 }
 
-export async function saveRollingContext(partialData = {}) {
+export async function saveRollingContext(partialData = {}, modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
   const next = normalizeRollingContext({
-    ...(await getMemoryContext()).rollingContext,
+    ...(await getMemoryContext(mode)).rollingContext,
     ...(partialData || {}),
     updatedAt: new Date().toISOString(),
   });
 
-  await AsyncStorage.setItem(ROLLING_KEY, JSON.stringify(next));
+  await AsyncStorage.setItem(getRollingStorageKey(mode), JSON.stringify(next));
 
   const userDocId = getUserDocId(auth.currentUser);
   if (userDocId) {
     try {
-      const { rollingRef } = memoryRefs(userDocId);
-      await setDoc(rollingRef, next, { merge: true });
+      const { memoryRef } = memoryRefs(userDocId, mode);
+      await setDoc(memoryRef, { rollingContext: next }, { merge: true });
     } catch {
       // Local save remains source of continuity when remote sync is unavailable.
     }
@@ -250,32 +260,63 @@ export async function saveRollingContext(partialData = {}) {
   return next;
 }
 
-export async function ensureMemoryScaffold() {
+export async function ensureMemoryScaffold(modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
   const userDocId = getUserDocId(auth.currentUser);
   if (!userDocId) return;
 
   try {
-    const { longTermRef, rollingRef } = memoryRefs(userDocId);
-    const [longSnap, rollingSnap] = await Promise.all([getDoc(longTermRef), getDoc(rollingRef)]);
+    const { memoryRef } = memoryRefs(userDocId, mode);
+    const memorySnap = await getDoc(memoryRef);
 
     const tasks = [];
-    if (!longSnap.exists()) {
+    if (!memorySnap.exists()) {
       tasks.push(
         setDoc(
-          longTermRef,
-          { ...DEFAULT_LONG_TERM_SUMMARY, updatedAt: new Date().toISOString() },
+          memoryRef,
+          {
+            longTermSummary: {
+              ...DEFAULT_LONG_TERM_SUMMARY,
+              updatedAt: new Date().toISOString(),
+            },
+            rollingContext: {
+              ...DEFAULT_ROLLING_CONTEXT,
+              updatedAt: new Date().toISOString(),
+            },
+          },
           { merge: true }
         )
       );
-    }
-    if (!rollingSnap.exists()) {
-      tasks.push(
-        setDoc(
-          rollingRef,
-          { ...DEFAULT_ROLLING_CONTEXT, updatedAt: new Date().toISOString() },
-          { merge: true }
-        )
-      );
+    } else {
+      const data = memorySnap.data() || {};
+      if (!data.longTermSummary) {
+        tasks.push(
+          setDoc(
+            memoryRef,
+            {
+              longTermSummary: {
+                ...DEFAULT_LONG_TERM_SUMMARY,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+            { merge: true }
+          )
+        );
+      }
+      if (!data.rollingContext) {
+        tasks.push(
+          setDoc(
+            memoryRef,
+            {
+              rollingContext: {
+                ...DEFAULT_ROLLING_CONTEXT,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+            { merge: true }
+          )
+        );
+      }
     }
     if (tasks.length) {
       await Promise.all(tasks);
@@ -479,13 +520,15 @@ export async function maybeRefreshLongTermSummary({
   journalEntries = [],
   moodEntries = null,
   force = false,
+  mode = null,
 } = {}) {
   if (compressionInFlight) return false;
 
-  const memory = await getMemoryContext();
+  const activeMode = normalizeCharacterMode(mode || await getActiveCharacterMode());
+  const memory = await getMemoryContext(activeMode);
   const longTermSummary = normalizeLongTermSummary(memory?.longTermSummary || {});
   const journalList = Array.isArray(journalEntries) ? journalEntries : [];
-  const moodList = Array.isArray(moodEntries) ? moodEntries : await getEntries();
+  const moodList = Array.isArray(moodEntries) ? moodEntries : await getEntries(activeMode);
 
   if (
     !shouldCompressLongTermSummary({
@@ -500,7 +543,7 @@ export async function maybeRefreshLongTermSummary({
 
   compressionInFlight = true;
   try {
-    const profile = await getProfile();
+    const profile = await getProfile(activeMode);
     const generated = await generateLongTermSummaryWithGemini({
       profile,
       longTerm: longTermSummary,
@@ -516,7 +559,7 @@ export async function maybeRefreshLongTermSummary({
       lastCompressedAt: new Date().toISOString(),
       lastProcessedJournalEntryCount: journalList.length,
       lastProcessedMoodEntryCount: moodList.length,
-    });
+    }, activeMode);
     return true;
   } finally {
     compressionInFlight = false;

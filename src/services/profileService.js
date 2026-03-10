@@ -1,7 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { DB_SCHEMA, getUserDocId } from '../constants/dataSchema';
+import {
+  DB_SCHEMA,
+  getCharacterCollection,
+  getUserDocId,
+  normalizeCharacterMode,
+} from '../constants/dataSchema';
+import { getActiveCharacterMode } from './characterModeService';
 
 const PROFILE_KEY = '@happy_state_profile_v1';
 
@@ -44,6 +50,7 @@ export const DEFAULT_PROFILE = {
   defaultInsightRange: 'Week',
   allowLongTermAnalysis: true,
   showProfessionalSupportSuggestions: true,
+  privateJournalMode: false,
   updatedAt: null,
 };
 
@@ -146,15 +153,32 @@ export function validateProfile(profileData = {}) {
       sleepAverage,
       allowLongTermAnalysis: Boolean(next.allowLongTermAnalysis),
       showProfessionalSupportSuggestions: Boolean(next.showProfessionalSupportSuggestions),
+      privateJournalMode: Boolean(next.privateJournalMode),
       updatedAt: new Date().toISOString(),
     },
   };
 }
 
-export async function getProfile() {
+function getProfileStorageKey(mode = 'public') {
+  return `${PROFILE_KEY}_${normalizeCharacterMode(mode)}`;
+}
+
+function profileRef(userDocId, mode = 'public') {
+  return doc(
+    db,
+    DB_SCHEMA.users,
+    userDocId,
+    getCharacterCollection(mode),
+    DB_SCHEMA.appData
+  );
+}
+
+export async function getProfile(modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
+  const storageKey = getProfileStorageKey(mode);
   const localProfile = await (async () => {
     try {
-      const raw = await AsyncStorage.getItem(PROFILE_KEY);
+      const raw = await AsyncStorage.getItem(storageKey);
       if (!raw) return DEFAULT_PROFILE;
       const parsed = JSON.parse(raw);
       const merged = { ...DEFAULT_PROFILE, ...(parsed || {}) };
@@ -169,41 +193,42 @@ export async function getProfile() {
   if (!userDocId) return localProfile;
 
   try {
-    const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.profile);
+    const ref = profileRef(userDocId, mode);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
       if (localProfile && localProfile !== DEFAULT_PROFILE) {
-        await setDoc(ref, { ...localProfile }, { merge: true });
+        await setDoc(ref, { profile: { ...localProfile } }, { merge: true });
       }
       return localProfile;
     }
 
-    const remote = { ...DEFAULT_PROFILE, ...(snap.data() || {}) };
+    const remote = { ...DEFAULT_PROFILE, ...(snap.data()?.profile || {}) };
     const cleanName = sanitizeName(remote.name, remote.email);
     const normalizedRemote = {
       ...remote,
       name: cleanName || DEFAULT_PROFILE.name,
     };
-    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(normalizedRemote));
+    await AsyncStorage.setItem(storageKey, JSON.stringify(normalizedRemote));
     return normalizedRemote;
   } catch {
     return localProfile;
   }
 }
 
-export async function saveProfile(profileData) {
+export async function saveProfile(profileData, modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
   const check = validateProfile(profileData);
   if (!check.isValid) {
     throw new Error(check.message);
   }
 
-  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(check.data));
+  await AsyncStorage.setItem(getProfileStorageKey(mode), JSON.stringify(check.data));
 
   const userDocId = getUserDocId(auth.currentUser);
   if (userDocId) {
     try {
-      const ref = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, DB_SCHEMA.docs.profile);
-      await setDoc(ref, { ...check.data }, { merge: true });
+      const ref = profileRef(userDocId, mode);
+      await setDoc(ref, { profile: { ...check.data } }, { merge: true });
       await setDoc(
         doc(db, DB_SCHEMA.users, userDocId),
         {
@@ -222,7 +247,8 @@ export async function saveProfile(profileData) {
   return check.data;
 }
 
-export async function updateProfile(partialData) {
-  const current = await getProfile();
-  return saveProfile({ ...current, ...(partialData || {}) });
+export async function updateProfile(partialData, modeOverride = null) {
+  const mode = normalizeCharacterMode(modeOverride || await getActiveCharacterMode());
+  const current = await getProfile(mode);
+  return saveProfile({ ...current, ...(partialData || {}) }, mode);
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -16,7 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
-import { COLORS } from "../constants/colors";
+import { useTheme } from "../context/ThemeContext";
 import {
   getProfile,
   hasRequiredPersonalDetails,
@@ -29,6 +29,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 
 const TABS = [
+  { key: "mode", label: "Mode" },
   { key: "general", label: "General" },
   { key: "emotional", label: "Emotional" },
   { key: "ai", label: "AI Preferences" },
@@ -50,6 +51,8 @@ function isEmailLike(value) {
 }
 
 function SegmentedControl({ options, value, onChange, disabled }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.segmentRow}>
       {options.map((option) => {
@@ -78,6 +81,8 @@ function SegmentedControl({ options, value, onChange, disabled }) {
 }
 
 function RowSwitch({ label, value, onValueChange, disabled }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.switchRow}>
       <Text style={styles.switchLabel}>{label}</Text>
@@ -86,13 +91,15 @@ function RowSwitch({ label, value, onValueChange, disabled }) {
         onValueChange={onValueChange}
         disabled={disabled}
         thumbColor="#FFFFFF"
-        trackColor={{ false: "#CBD5E1", true: "#93C5FD" }}
+        trackColor={{ false: colors.border, true: colors.primary }}
       />
     </View>
   );
 }
 
 function FieldLabel({ children, hint }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.fieldHeader}>
       <Text style={styles.fieldLabel}>{children}</Text>
@@ -102,6 +109,15 @@ function FieldLabel({ children, hint }) {
 }
 
 export default function ProfileScreen({ navigation, route }) {
+  const { colors, setPrivateMode, refreshThemeFromProfile } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const cardGradient = useMemo(
+    () => ({
+      ...CARD_GRADIENT,
+      colors: colors.cardGradient,
+    }),
+    [colors],
+  );
   const {
     user,
     profile: authProfile,
@@ -302,6 +318,10 @@ export default function ProfileScreen({ navigation, route }) {
       } else {
         const saved = await saveProfile(form);
         setForm(saved);
+        if (sectionKey === "privacy") {
+          await setPrivateMode(Boolean(saved.privateJournalMode));
+          await refreshThemeFromProfile();
+        }
       }
       setSectionEdit((prev) => ({ ...prev, [sectionKey]: false }));
       showSaveSuccess();
@@ -483,7 +503,7 @@ export default function ProfileScreen({ navigation, route }) {
                 : "create-outline"
             }
             size={18}
-            color={COLORS.primary}
+            color={colors.primary}
           />
         </Pressable>
       ) : null}
@@ -508,10 +528,56 @@ export default function ProfileScreen({ navigation, route }) {
   const renderTabContent = () => {
     if (!form) return null;
 
+    if (activeTab === "mode") {
+      const privateActive = Boolean(form.privateJournalMode);
+      return (
+        <LinearGradient {...cardGradient} style={styles.card}>
+          <Text style={styles.sectionTitle}>Character Mode</Text>
+          <Text style={styles.sectionDesc}>
+            Switch the entire app between public and private character data instantly.
+          </Text>
+
+          <Pressable
+            style={[
+              styles.modeOptionCard,
+              !privateActive && styles.modeOptionCardActive,
+            ]}
+            onPress={async () => {
+              await setPrivateMode(false);
+              setForm((prev) => ({ ...(prev || {}), privateJournalMode: false }));
+              await loadProfile();
+            }}
+          >
+            <Text style={styles.modeOptionTitle}>Public Character</Text>
+            <Text style={styles.modeOptionText}>
+              Uses the public collection for profile, moods, journal, and memory.
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.modeOptionCard,
+              privateActive && styles.modeOptionCardActive,
+            ]}
+            onPress={async () => {
+              await setPrivateMode(true);
+              setForm((prev) => ({ ...(prev || {}), privateJournalMode: true }));
+              await loadProfile();
+            }}
+          >
+            <Text style={styles.modeOptionTitle}>Private Character</Text>
+            <Text style={styles.modeOptionText}>
+              Uses the private collection for the full app, including memory and mood logs.
+            </Text>
+          </Pressable>
+        </LinearGradient>
+      );
+    }
+
     if (activeTab === "general" || forceOnboarding) {
       const editable = sectionEdit.general;
       return (
-        <LinearGradient {...CARD_GRADIENT} style={styles.card}>
+        <LinearGradient {...cardGradient} style={styles.card}>
           {renderSectionHeader(
             forceOnboarding ? "Personal Details" : "General",
             forceOnboarding
@@ -564,7 +630,7 @@ export default function ProfileScreen({ navigation, route }) {
                 <Ionicons
                   name="chevron-down"
                   size={18}
-                  color={COLORS.textMuted}
+                  color={colors.textMuted}
                 />
               </Pressable>
             </View>
@@ -632,7 +698,7 @@ export default function ProfileScreen({ navigation, route }) {
     if (activeTab === "emotional") {
       const editable = sectionEdit.emotional;
       return (
-        <LinearGradient {...CARD_GRADIENT} style={styles.card}>
+        <LinearGradient {...cardGradient} style={styles.card}>
           {renderSectionHeader(
             "Emotional Baseline",
             "Used for trend analysis and stability insights.",
@@ -680,7 +746,7 @@ export default function ProfileScreen({ navigation, route }) {
     if (activeTab === "ai") {
       const editable = sectionEdit.ai;
       return (
-        <LinearGradient {...CARD_GRADIENT} style={styles.card}>
+        <LinearGradient {...cardGradient} style={styles.card}>
           {renderSectionHeader(
             "AI Preferences",
             "Controls tone, depth and default range for AI outputs.",
@@ -719,7 +785,7 @@ export default function ProfileScreen({ navigation, route }) {
     if (activeTab === "journal") {
       const editable = sectionEdit.journal;
       return (
-        <LinearGradient {...CARD_GRADIENT} style={styles.card}>
+        <LinearGradient {...cardGradient} style={styles.card}>
           {renderSectionHeader(
             "Journal Settings",
             "Edit the same AI long-term context used in journal conversations.",
@@ -735,7 +801,7 @@ export default function ProfileScreen({ navigation, route }) {
                 style={[styles.input, !editable && styles.inputDisabled]}
                 editable={editable}
                 placeholder="Label (e.g. boss)"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
                 value={newTagLabel}
                 onChangeText={setNewTagLabel}
               />
@@ -745,7 +811,7 @@ export default function ProfileScreen({ navigation, route }) {
                 style={[styles.input, !editable && styles.inputDisabled]}
                 editable={editable}
                 placeholder="Name (e.g. Rakesh)"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
                 value={newTagName}
                 onChangeText={setNewTagName}
               />
@@ -800,7 +866,7 @@ export default function ProfileScreen({ navigation, route }) {
                 <Ionicons
                   name="trash-outline"
                   size={16}
-                  color={COLORS.danger}
+                  color={colors.danger}
                 />
               </Pressable>
             </View>
@@ -886,7 +952,7 @@ export default function ProfileScreen({ navigation, route }) {
     if (activeTab === "privacy") {
       const editable = sectionEdit.privacy;
       return (
-        <LinearGradient {...CARD_GRADIENT} style={styles.card}>
+        <LinearGradient {...cardGradient} style={styles.card}>
           {renderSectionHeader(
             "Privacy",
             "Choose how much long-term context AI can use.",
@@ -908,14 +974,13 @@ export default function ProfileScreen({ navigation, route }) {
               setField("showProfessionalSupportSuggestions", v)
             }
           />
-
           {renderSaveButton("privacy")}
         </LinearGradient>
       );
     }
 
     return (
-      <LinearGradient {...CARD_GRADIENT} style={styles.card}>
+      <LinearGradient {...cardGradient} style={styles.card}>
         <Text style={styles.sectionTitle}>Account</Text>
         <Text style={styles.sectionDesc}>
           Security and account-level controls.
@@ -957,7 +1022,7 @@ export default function ProfileScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
       >
         <LinearGradient
-          colors={["#889ff4", "#4542fc", "#7b92f9"]}
+          colors={colors.heroGradient}
           locations={[0, 0.5, 1]}
           start={{ x: 1, y: 1 }} // bottom-right
           end={{ x: 0, y: 0 }} // top-left
@@ -1121,10 +1186,10 @@ export default function ProfileScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   center: { justifyContent: "center", alignItems: "center" },
-  loadingText: { color: COLORS.textMuted, fontWeight: "600" },
+  loadingText: { color: colors.textMuted, fontWeight: "600" },
   content: { padding: 14, paddingBottom: 28 },
 
   heroSection: {
@@ -1164,7 +1229,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1188,36 +1253,58 @@ const styles = StyleSheet.create({
 
   tabRow: {
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
     paddingBottom: 2,
     marginBottom: 10,
   },
   tabBtn: { marginRight: 18, paddingBottom: 8 },
-  tabText: { color: COLORS.textMuted, fontWeight: "700", fontSize: 14 },
-  tabTextActive: { color: COLORS.primary },
+  tabText: { color: colors.textMuted, fontWeight: "700", fontSize: 14 },
+  tabTextActive: { color: colors.primary },
   tabUnderline: {
     marginTop: 5,
     height: 2,
     borderRadius: 99,
     backgroundColor: "transparent",
   },
-  tabUnderlineActive: { backgroundColor: COLORS.primary },
+  tabUnderlineActive: { backgroundColor: colors.primary },
 
   card: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     padding: 14,
+  },
+  modeOptionCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 14,
+    backgroundColor: colors.surface,
+    marginTop: 10,
+  },
+  modeOptionCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.inputAccent,
+  },
+  modeOptionTitle: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  modeOptionText: {
+    marginTop: 6,
+    color: colors.textMuted,
+    lineHeight: 20,
   },
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 10,
   },
-  sectionTitle: { color: COLORS.text, fontWeight: "800", fontSize: 18 },
+  sectionTitle: { color: colors.text, fontWeight: "800", fontSize: 18 },
   sectionDesc: {
     marginTop: 4,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
     fontSize: 12,
     marginBottom: 6,
@@ -1227,24 +1314,24 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#93C5FD",
-    backgroundColor: "#EFF6FF",
+    borderColor: colors.inputAccentBorder,
+    backgroundColor: colors.inputAccent,
     alignItems: "center",
     justifyContent: "center",
     marginLeft: 10,
   },
 
   fieldHeader: { marginBottom: 8 },
-  fieldLabel: { color: COLORS.text, fontWeight: "700" },
-  fieldHint: { marginTop: 2, color: COLORS.textMuted, fontSize: 12 },
+  fieldLabel: { color: colors.text, fontWeight: "700" },
+  fieldHint: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
 
   input: {
     height: 46,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    color: COLORS.text,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
     paddingHorizontal: 12,
     marginBottom: 12,
   },
@@ -1252,8 +1339,8 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: 12,
     marginBottom: 12,
     flexDirection: "row",
@@ -1261,20 +1348,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   dropdownText: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "600",
   },
   inputDisabled: {
-    backgroundColor: "#E2E8F0",
-    color: COLORS.textMuted,
+    backgroundColor: colors.border,
+    color: colors.textMuted,
   },
   aboutInput: {
     minHeight: 86,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    color: COLORS.text,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -1290,19 +1377,19 @@ const styles = StyleSheet.create({
   },
   segmentBtn: {
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 10,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     paddingVertical: 9,
     paddingHorizontal: 10,
   },
   segmentBtnActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: "#EFF6FF",
+    borderColor: colors.primary,
+    backgroundColor: colors.inputAccent,
   },
   segmentDisabled: { opacity: 0.6 },
-  segmentText: { color: COLORS.textMuted, fontWeight: "600", fontSize: 12 },
-  segmentTextActive: { color: COLORS.primary, fontWeight: "700" },
+  segmentText: { color: colors.textMuted, fontWeight: "600", fontSize: 12 },
+  segmentTextActive: { color: colors.primary, fontWeight: "700" },
 
   switchRow: {
     flexDirection: "row",
@@ -1310,7 +1397,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   switchLabel: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "600",
     flex: 1,
     paddingRight: 12,
@@ -1321,7 +1408,7 @@ const styles = StyleSheet.create({
   inlineAddBtn: {
     height: 40,
     borderRadius: 10,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
@@ -1338,9 +1425,9 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    color: COLORS.text,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
     paddingHorizontal: 10,
   },
   tagDeleteBtn: {
@@ -1348,8 +1435,8 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#FCA5A5",
-    backgroundColor: "#FEF2F2",
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSurface,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1358,7 +1445,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     height: 46,
     borderRadius: 12,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1369,16 +1456,16 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
   },
   accountBtnDisabled: { opacity: 0.7 },
-  accountBtnText: { color: COLORS.text, fontWeight: "800" },
-  deleteBtn: { borderColor: "#FCA5A5", backgroundColor: "#FEF2F2" },
-  deleteBtnText: { color: COLORS.danger },
+  accountBtnText: { color: colors.text, fontWeight: "800" },
+  deleteBtn: { borderColor: colors.dangerBorder, backgroundColor: colors.dangerSurface },
+  deleteBtnText: { color: colors.danger },
 
   successBanner: {
     position: "absolute",
@@ -1400,7 +1487,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    backgroundColor: colors.overlay,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 20,
@@ -1408,19 +1495,19 @@ const styles = StyleSheet.create({
   modalCard: {
     width: "100%",
     borderRadius: 14,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     padding: 16,
   },
   modalTitle: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "800",
     fontSize: 18,
   },
   modalMessage: {
     marginTop: 8,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   modalActions: {
@@ -1434,22 +1521,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
   },
   modalCancelText: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "700",
   },
   modalCancelFullBtn: {
     height: 40,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 8,
@@ -1458,14 +1545,14 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#F8FAFC",
+    borderColor: colors.border,
+    backgroundColor: colors.inputSurface,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 8,
   },
   genderOptionText: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: "700",
   },
   modalConfirmBtn: {
@@ -1473,15 +1560,16 @@ const styles = StyleSheet.create({
     minWidth: 120,
     paddingHorizontal: 14,
     borderRadius: 10,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   modalConfirmBtnDanger: {
-    backgroundColor: COLORS.danger,
+    backgroundColor: colors.danger,
   },
   modalConfirmText: {
     color: "#FFFFFF",
     fontWeight: "800",
   },
 });
+

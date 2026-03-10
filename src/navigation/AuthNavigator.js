@@ -1,18 +1,20 @@
-import React from 'react';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import LoginScreen from '../screens/Auth/LoginScreen';
-import SignupScreen from '../screens/Auth/SignupScreen';
-import { COLORS } from '../constants/colors';
+import React from "react";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import LoginScreen from "../screens/Auth/LoginScreen";
+import SignupScreen from "../screens/Auth/SignupScreen";
+import { useTheme } from "../context/ThemeContext";
 
 const Stack = createNativeStackNavigator();
 
 export default function AuthNavigator() {
+  const { colors } = useTheme();
+
   return (
     <Stack.Navigator
       initialRouteName="Login"
       screenOptions={{
-        headerTitleAlign: 'center',
-        headerStyle: { backgroundColor: COLORS.surface },
+        headerTitleAlign: "center",
+        headerStyle: { backgroundColor: colors.surface },
         headerShadowVisible: false,
       }}
     >
@@ -21,7 +23,7 @@ export default function AuthNavigator() {
         component={LoginScreen}
         options={{
           headerShown: false,
-          title: 'Welcome Back',
+          title: "Welcome Back",
         }}
       />
       <Stack.Screen

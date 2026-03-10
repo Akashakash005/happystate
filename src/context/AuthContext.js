@@ -8,7 +8,12 @@ import {
 } from 'firebase/auth';
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
-import { DB_SCHEMA, getUserDocId, normalizeEmail } from '../constants/dataSchema';
+import {
+  DB_SCHEMA,
+  getCharacterCollection,
+  getUserDocId,
+  normalizeEmail,
+} from '../constants/dataSchema';
 
 const AuthContext = createContext(null);
 
@@ -59,145 +64,153 @@ async function upsertProfile(firebaseUser, extraFields = {}) {
 
 async function ensureUserDataScaffold(firebaseUser) {
   const userDocId = getUserDocId(firebaseUser);
-  const profileRef = doc(
-    db,
-    DB_SCHEMA.users,
-    userDocId,
-    DB_SCHEMA.appData,
-    DB_SCHEMA.docs.profile
-  );
-  const moodEntriesRef = doc(
-    db,
-    DB_SCHEMA.users,
-    userDocId,
-    DB_SCHEMA.appData,
-    DB_SCHEMA.docs.moodEntries
-  );
-  const journalSessionsRef = doc(
-    db,
-    DB_SCHEMA.users,
-    userDocId,
-    DB_SCHEMA.appData,
-    DB_SCHEMA.docs.journalSessions
-  );
-  const longTermSummaryRef = doc(
-    db,
-    DB_SCHEMA.users,
-    userDocId,
-    DB_SCHEMA.memory,
-    DB_SCHEMA.docs.longTermSummary
-  );
-  const rollingContextRef = doc(
-    db,
-    DB_SCHEMA.users,
-    userDocId,
-    DB_SCHEMA.memory,
-    DB_SCHEMA.docs.rollingContext
-  );
+  const characterModes = ['public', 'private'];
 
-  const [profileSnap, moodSnap, journalSnap, longTermSnap, rollingSnap] = await Promise.all([
-    getDoc(profileRef),
-    getDoc(moodEntriesRef),
-    getDoc(journalSessionsRef),
-    getDoc(longTermSummaryRef),
-    getDoc(rollingContextRef),
-  ]);
-
-  const tasks = [];
-
-  if (!profileSnap.exists()) {
-    tasks.push(
-      setDoc(
-        profileRef,
-        {
-          name: sanitizeDisplayName(firebaseUser.displayName, firebaseUser.email),
-          email: normalizeEmail(firebaseUser.email),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      )
+  for (const mode of characterModes) {
+    const characterCollection = getCharacterCollection(mode);
+    const profileRef = doc(
+      db,
+      DB_SCHEMA.users,
+      userDocId,
+      characterCollection,
+      DB_SCHEMA.appData
     );
-  }
-
-  if (!moodSnap.exists()) {
-    tasks.push(
-      setDoc(
-        moodEntriesRef,
-        {
-          entries: [],
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      )
+    const moodEntriesRef = doc(
+      db,
+      DB_SCHEMA.users,
+      userDocId,
+      characterCollection,
+      DB_SCHEMA.appData
     );
-  }
-
-  if (!journalSnap.exists()) {
-    tasks.push(
-      setDoc(
-        journalSessionsRef,
-        {
-          sessions: [],
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      )
+    const journalSessionsRef = doc(
+      db,
+      DB_SCHEMA.users,
+      userDocId,
+      characterCollection,
+      DB_SCHEMA.appData
     );
-  }
+    const longTermSummaryRef = doc(
+      db,
+      DB_SCHEMA.users,
+      userDocId,
+      characterCollection,
+      DB_SCHEMA.memory
+    );
 
-  if (!longTermSnap.exists()) {
-    tasks.push(
-      setDoc(
-        longTermSummaryRef,
-        {
-          profileSummary: '',
-          emotionalBaselineSummary: '',
-          personalityPattern: '',
-          stressBaseline: '',
-          emotionalTriggers: [],
-          supportPatterns: [],
-          recurringThemes: [],
-          relationshipPatterns: [],
-          manualTags: [],
-          userOverrides: {
-            profileSummary: false,
-            emotionalBaselineSummary: false,
-            personalityPattern: false,
-            stressBaseline: false,
-            emotionalTriggers: false,
-            supportPatterns: false,
-            recurringThemes: false,
-            relationshipPatterns: false,
-            manualTags: false,
+    const [profileSnap, moodSnap, journalSnap, memorySnap] = await Promise.all([
+      getDoc(profileRef),
+      getDoc(moodEntriesRef),
+      getDoc(journalSessionsRef),
+      getDoc(longTermSummaryRef),
+    ]);
+
+    const tasks = [];
+
+    if (!profileSnap.exists() || !profileSnap.data()?.profile) {
+      tasks.push(
+        setDoc(
+          profileRef,
+          {
+            profile: {
+              name: sanitizeDisplayName(firebaseUser.displayName, firebaseUser.email),
+              email: normalizeEmail(firebaseUser.email),
+              privateJournalMode: mode === 'private',
+              updatedAt: serverTimestamp(),
+            },
           },
-          lastCompressedAt: null,
-          lastProcessedJournalEntryCount: 0,
-          lastProcessedMoodEntryCount: 0,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      )
-    );
-  }
+          { merge: true }
+        )
+      );
+    }
 
-  if (!rollingSnap.exists()) {
-    tasks.push(
-      setDoc(
-        rollingContextRef,
-        {
-          recentMoodTrend7d: '',
-          recentEntriesSummary: '',
-          sessionSummary: '',
-          activeFocus: '',
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      )
-    );
-  }
+    if (!moodSnap.exists() || !moodSnap.data()?.moodEntries) {
+      tasks.push(
+        setDoc(
+          moodEntriesRef,
+          {
+            moodEntries: {
+              entries: [],
+              updatedAt: serverTimestamp(),
+            },
+          },
+          { merge: true }
+        )
+      );
+    }
 
-  if (tasks.length) {
-    await Promise.all(tasks);
+    if (!journalSnap.exists() || !journalSnap.data()?.journalSessions) {
+      tasks.push(
+        setDoc(
+          journalSessionsRef,
+          {
+            journalSessions: {
+              sessions: [],
+              updatedAt: serverTimestamp(),
+            },
+          },
+          { merge: true }
+        )
+      );
+    }
+
+    if (!memorySnap.exists() || !memorySnap.data()?.longTermSummary) {
+      tasks.push(
+        setDoc(
+          longTermSummaryRef,
+          {
+            longTermSummary: {
+              profileSummary: '',
+              emotionalBaselineSummary: '',
+              personalityPattern: '',
+              stressBaseline: '',
+              emotionalTriggers: [],
+              supportPatterns: [],
+              recurringThemes: [],
+              relationshipPatterns: [],
+              manualTags: [],
+              userOverrides: {
+                profileSummary: false,
+                emotionalBaselineSummary: false,
+                personalityPattern: false,
+                stressBaseline: false,
+                emotionalTriggers: false,
+                supportPatterns: false,
+                recurringThemes: false,
+                relationshipPatterns: false,
+                manualTags: false,
+              },
+              lastCompressedAt: null,
+              lastProcessedJournalEntryCount: 0,
+              lastProcessedMoodEntryCount: 0,
+              updatedAt: serverTimestamp(),
+            },
+          },
+          { merge: true }
+        )
+      );
+    }
+
+    if (!memorySnap.exists() || !memorySnap.data()?.rollingContext) {
+      tasks.push(
+        setDoc(
+          longTermSummaryRef,
+          {
+            rollingContext: {
+              recentMoodTrend7d: '',
+              recentEntriesSummary: '',
+              sessionSummary: '',
+              activeFocus: '',
+              updatedAt: serverTimestamp(),
+            },
+          },
+          { merge: true }
+        )
+      );
+    }
+
+    if (tasks.length) {
+      await Promise.all(tasks);
+    }
   }
 }
 
@@ -223,40 +236,102 @@ async function migrateLegacyUidStructure(firebaseUser) {
 
   for (const docId of appDocIds) {
     const legacyAppRef = doc(db, DB_SCHEMA.users, legacyUid, DB_SCHEMA.appData, docId);
-    const nextAppRef = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, docId);
+    const nextAppRef = doc(
+      db,
+      DB_SCHEMA.users,
+      userDocId,
+      getCharacterCollection('public'),
+      DB_SCHEMA.appData
+    );
     const [legacySnap, nextSnap] = await Promise.all([getDoc(legacyAppRef), getDoc(nextAppRef)]);
     if (!legacySnap.exists()) continue;
 
     const legacyData = legacySnap.data() || {};
-    if (!nextSnap.exists()) {
-      await setDoc(nextAppRef, { ...legacyData }, { merge: true });
+    const nextData = nextSnap.exists() ? nextSnap.data() || {} : {};
+    const fieldKey =
+      docId === DB_SCHEMA.docs.profile
+        ? 'profile'
+        : docId === DB_SCHEMA.docs.moodEntries
+          ? 'moodEntries'
+          : 'journalSessions';
+    if (!nextSnap.exists() || !nextData[fieldKey]) {
+      await setDoc(nextAppRef, { [fieldKey]: { ...legacyData } }, { merge: true });
       continue;
     }
-
-    const nextData = nextSnap.data() || {};
     const shouldRecoverMoodEntries =
       docId === DB_SCHEMA.docs.moodEntries &&
       Array.isArray(legacyData.entries) &&
       legacyData.entries.length > 0 &&
-      (!Array.isArray(nextData.entries) || nextData.entries.length === 0);
+      (!Array.isArray(nextData?.moodEntries?.entries) || nextData.moodEntries.entries.length === 0);
     const shouldRecoverJournalSessions =
       docId === DB_SCHEMA.docs.journalSessions &&
       Array.isArray(legacyData.sessions) &&
       legacyData.sessions.length > 0 &&
-      (!Array.isArray(nextData.sessions) || nextData.sessions.length === 0);
+      (!Array.isArray(nextData?.journalSessions?.sessions) || nextData.journalSessions.sessions.length === 0);
 
     if (shouldRecoverMoodEntries || shouldRecoverJournalSessions) {
-      await setDoc(nextAppRef, { ...legacyData }, { merge: true });
+      await setDoc(nextAppRef, { [fieldKey]: { ...legacyData } }, { merge: true });
     }
   }
 
   const memoryDocIds = [DB_SCHEMA.docs.longTermSummary, DB_SCHEMA.docs.rollingContext];
   for (const docId of memoryDocIds) {
     const legacyMemRef = doc(db, DB_SCHEMA.users, legacyUid, DB_SCHEMA.memory, docId);
-    const nextMemRef = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.memory, docId);
+    const nextMemRef = doc(
+      db,
+      DB_SCHEMA.users,
+      userDocId,
+      getCharacterCollection('public'),
+      DB_SCHEMA.memory
+    );
     const [legacySnap, nextSnap] = await Promise.all([getDoc(legacyMemRef), getDoc(nextMemRef)]);
-    if (legacySnap.exists() && !nextSnap.exists()) {
-      await setDoc(nextMemRef, { ...legacySnap.data() }, { merge: true });
+    const fieldKey =
+      docId === DB_SCHEMA.docs.longTermSummary ? 'longTermSummary' : 'rollingContext';
+    if (legacySnap.exists() && (!nextSnap.exists() || !nextSnap.data()?.[fieldKey])) {
+      await setDoc(nextMemRef, { [fieldKey]: { ...legacySnap.data() } }, { merge: true });
+    }
+  }
+
+  const currentRootAppDocs = [
+    DB_SCHEMA.docs.profile,
+    DB_SCHEMA.docs.moodEntries,
+    DB_SCHEMA.docs.journalSessions,
+  ];
+  for (const docId of currentRootAppDocs) {
+    const legacyRootAppRef = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.appData, docId);
+    const publicAppRef = doc(
+      db,
+      DB_SCHEMA.users,
+      userDocId,
+      getCharacterCollection('public'),
+      DB_SCHEMA.appData
+    );
+    const [legacySnap, publicSnap] = await Promise.all([getDoc(legacyRootAppRef), getDoc(publicAppRef)]);
+    const fieldKey =
+      docId === DB_SCHEMA.docs.profile
+        ? 'profile'
+        : docId === DB_SCHEMA.docs.moodEntries
+          ? 'moodEntries'
+          : 'journalSessions';
+    if (legacySnap.exists() && (!publicSnap.exists() || !publicSnap.data()?.[fieldKey])) {
+      await setDoc(publicAppRef, { [fieldKey]: { ...legacySnap.data() } }, { merge: true });
+    }
+  }
+
+  for (const docId of memoryDocIds) {
+    const legacyRootMemoryRef = doc(db, DB_SCHEMA.users, userDocId, DB_SCHEMA.memory, docId);
+    const publicMemRef = doc(
+      db,
+      DB_SCHEMA.users,
+      userDocId,
+      getCharacterCollection('public'),
+      DB_SCHEMA.memory
+    );
+    const [legacySnap, publicSnap] = await Promise.all([getDoc(legacyRootMemoryRef), getDoc(publicMemRef)]);
+    const fieldKey =
+      docId === DB_SCHEMA.docs.longTermSummary ? 'longTermSummary' : 'rollingContext';
+    if (legacySnap.exists() && (!publicSnap.exists() || !publicSnap.data()?.[fieldKey])) {
+      await setDoc(publicMemRef, { [fieldKey]: { ...legacySnap.data() } }, { merge: true });
     }
   }
 }
