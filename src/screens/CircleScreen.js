@@ -22,7 +22,12 @@ import {
 import { getGeminiQuotaState } from "../services/aiJournalService";
 import { formatLongDate } from "../utils/date";
 
-function moodCorrelationLabel(avgMood) {
+function moodCorrelationLabel(avgMood, isPrivateMode = false) {
+  if (isPrivateMode) {
+    if (avgMood >= 0.2) return "High tease";
+    if (avgMood <= -0.2) return "Low tease";
+    return "Mixed signal";
+  }
   if (avgMood >= 0.2) return "Positive";
   if (avgMood <= -0.2) return "Stress-linked";
   return "Mixed";
@@ -118,8 +123,9 @@ export default function CircleScreen() {
       </View>
       <Text style={styles.heroTitle}>Building Your Circle</Text>
       <Text style={styles.heroDescription}>
-        Your Circle automatically detects people you mention and reveals how
-        those connections correlate with your emotional patterns.
+        {isPrivateMode
+          ? "Idhu un private list. Yaaru unnai tease pannura, yaaru mind la ukkandhuruva, yaaru level ah mela edukura nu straight ah kaatum."
+          : "Your Circle automatically detects people you mention and reveals how those connections correlate with your emotional patterns."}
       </Text>
 
       <LinearGradient
@@ -131,21 +137,33 @@ export default function CircleScreen() {
       >
         <Text style={styles.discoveryTitle}>What You will Discover:</Text>
         <View style={styles.discoveryItem}>
-          <Text style={styles.discoveryLabel}>Mood Correlations</Text>
+          <Text style={styles.discoveryLabel}>
+            {isPrivateMode ? "Level Shift" : "Mood Correlations"}
+          </Text>
           <Text style={styles.discoveryText}>
-            See how your mood differs when writing about each person.
+            {isPrivateMode
+              ? "Yaar pathi eludhunaa level rise agudhu, yaar pathi sonnaa just spark dhaan nu clear ah theriyum."
+              : "See how your mood differs when writing about each person."}
           </Text>
         </View>
         <View style={styles.discoveryItem}>
-          <Text style={styles.discoveryLabel}>Connection Patterns</Text>
+          <Text style={styles.discoveryLabel}>
+            {isPrivateMode ? "Yaaru Un Trigger" : "Connection Patterns"}
+          </Text>
           <Text style={styles.discoveryText}>
-            Find who brings positive energy and who correlates with stress.
+            {isPrivateMode
+              ? "Yaaru unnai romba tease pannura, yaaru peak ku kondu pogura, yaaru repeat ah mind la vara nu idhu dhaan expose pannum."
+              : "Find who brings positive energy and who correlates with stress."}
           </Text>
         </View>
         <View style={styles.discoveryItem}>
-          <Text style={styles.discoveryLabel}>Recency Awareness</Text>
+          <Text style={styles.discoveryLabel}>
+            {isPrivateMode ? "Recent Obsession" : "Recency Awareness"}
+          </Text>
           <Text style={styles.discoveryText}>
-            Track the latest connections that may need attention.
+            {isPrivateMode
+              ? "Ippo recent ah yaaru thaan un head la odikittu irukaan nu instant ah capture pannum."
+              : "Track the latest connections that may need attention."}
           </Text>
         </View>
       </LinearGradient>
@@ -217,8 +235,9 @@ export default function CircleScreen() {
           {!result.people.length ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
-                No repeated names yet. Mention people at least twice in journal
-                chats.
+                {isPrivateMode
+                  ? "No repeated names yet. Mention someone at least twice in private logs to surface the pattern."
+                  : "No repeated names yet. Mention people at least twice in journal chats."}
               </Text>
             </View>
           ) : viewMode === "summary" ? (
@@ -232,15 +251,28 @@ export default function CircleScreen() {
                       { color: moodCorrelationColor(person.avgMood, colors) },
                     ]}
                   >
-                    {moodCorrelationLabel(person.avgMood)}
+                    {moodCorrelationLabel(person.avgMood, isPrivateMode)}
                   </Text>
                 </View>
                 <Text style={styles.personMeta}>
                   Mentions: {person.mentionCount}
                 </Text>
                 <Text style={styles.personMeta}>
-                  Average Mood Score: {person.avgMood.toFixed(2)}
+                  {isPrivateMode ? "Average Level" : "Average Mood Score"}: {isPrivateMode ? person.avgLevel.toFixed(2) : person.avgMood.toFixed(2)}
                 </Text>
+                {isPrivateMode ? (
+                  <>
+                    <Text style={styles.personMeta}>
+                      Peak Level: {person.peakLevel.toFixed(2)}
+                    </Text>
+                    <Text style={styles.personMeta}>
+                      High Intensity Mentions: {person.highIntensityCount}
+                    </Text>
+                    <Text style={styles.personMeta}>
+                      Recent Heat: {person.recentHeat.toFixed(2)}
+                    </Text>
+                  </>
+                ) : null}
                 <Text style={styles.personMeta}>
                   Last Mention: {formatLongDate(person.lastMentionDate)}
                 </Text>
@@ -271,22 +303,54 @@ export default function CircleScreen() {
           {viewMode === "summary" ? (
             <>
               <View style={styles.summaryCard}>
-                <Text style={styles.summaryTitle}>Who brings positive energy?</Text>
+                <Text style={styles.summaryTitle}>
+                  {isPrivateMode ? "Who is teasing you more?" : "Who brings positive energy?"}
+                </Text>
                 <Text style={styles.summaryText}>
-                  {result.positiveEnergy.length
-                    ? result.positiveEnergy.join(", ")
-                    : "No strong positive patterns yet."}
+                  {isPrivateMode
+                    ? result.topTeasing?.length
+                      ? result.topTeasing.join(", ")
+                      : "No strong teasing pattern yet."
+                    : result.positiveEnergy.length
+                      ? result.positiveEnergy.join(", ")
+                      : "No strong positive patterns yet."}
                 </Text>
               </View>
 
               <View style={styles.summaryCard}>
-                <Text style={styles.summaryTitle}>Who correlates with stress?</Text>
+                <Text style={styles.summaryTitle}>
+                  {isPrivateMode ? "Who pushes you to peak level?" : "Who correlates with stress?"}
+                </Text>
                 <Text style={styles.summaryText}>
-                  {result.stressCorrelated.length
-                    ? result.stressCorrelated.join(", ")
-                    : "No strong stress-linked patterns yet."}
+                  {isPrivateMode
+                    ? result.peakTriggers?.length
+                      ? result.peakTriggers.join(", ")
+                      : "No peak trigger pattern yet."
+                    : result.stressCorrelated.length
+                      ? result.stressCorrelated.join(", ")
+                      : "No strong stress-linked patterns yet."}
                 </Text>
               </View>
+              {isPrivateMode ? (
+                <>
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryTitle}>Who stays in your head most?</Text>
+                    <Text style={styles.summaryText}>
+                      {result.mostFrequent?.length
+                        ? result.mostFrequent.join(", ")
+                        : "No repeat obsession pattern yet."}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryTitle}>Who is heating up recently?</Text>
+                    <Text style={styles.summaryText}>
+                      {result.risingRecently?.length
+                        ? result.risingRecently.join(", ")
+                        : "No recent rise detected yet."}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
             </>
           ) : null}
         </View>

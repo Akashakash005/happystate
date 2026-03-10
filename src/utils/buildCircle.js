@@ -76,6 +76,14 @@ function toMoodScore(value) {
   return 0;
 }
 
+function toLevelScore(value) {
+  const num = Number(value);
+  if (Number.isNaN(num)) return 1;
+  if (num >= 1 && num <= 5) return num;
+  if (num >= -1 && num <= 1) return Number((num * 2 + 3).toFixed(2));
+  return 1;
+}
+
 function moodLabelFromAverage(avgMood) {
   if (avgMood >= 0.2) return 'positive';
   if (avgMood <= -0.2) return 'negative';
@@ -127,6 +135,7 @@ export async function buildCircle(entries, options = {}) {
         person: displayNameFromKey(key, name),
         mentionCount: 0,
         moodSamples: [],
+        levelSamples: [],
         confidenceSamples: [],
         aliases: [],
         lastMentionDate: mentionDate,
@@ -136,6 +145,7 @@ export async function buildCircle(entries, options = {}) {
       current.person = current.person.length >= display.length ? current.person : display;
       current.mentionCount += 1;
       current.moodSamples.push(moodValue);
+      current.levelSamples.push(toLevelScore(entry?.mood ?? entry?.sentimentScore));
       current.confidenceSamples.push(mentionConfidence);
       if (!current.aliases.includes(name)) current.aliases.push(name);
 
@@ -152,6 +162,17 @@ export async function buildCircle(entries, options = {}) {
     .map((item) => {
       const total = item.moodSamples.reduce((sum, value) => sum + value, 0);
       const avgMood = item.moodSamples.length ? Number((total / item.moodSamples.length).toFixed(2)) : 0;
+      const avgLevel = item.levelSamples.length
+        ? Number((item.levelSamples.reduce((sum, value) => sum + value, 0) / item.levelSamples.length).toFixed(2))
+        : 1;
+      const peakLevel = item.levelSamples.length
+        ? Number(Math.max(...item.levelSamples).toFixed(2))
+        : 1;
+      const highIntensityCount = item.levelSamples.filter((value) => value >= 4).length;
+      const recentLevels = item.levelSamples.slice(-3);
+      const recentHeat = recentLevels.length
+        ? Number((recentLevels.reduce((sum, value) => sum + value, 0) / recentLevels.length).toFixed(2))
+        : avgLevel;
       const confidence = item.confidenceSamples.length
         ? Number(
           (
@@ -165,6 +186,10 @@ export async function buildCircle(entries, options = {}) {
         person: item.person,
         mentionCount: item.mentionCount,
         avgMood,
+        avgLevel,
+        peakLevel,
+        highIntensityCount,
+        recentHeat,
         moodCorrelation: moodLabelFromAverage(avgMood),
         confidence,
         aliases: item.aliases,
@@ -172,6 +197,22 @@ export async function buildCircle(entries, options = {}) {
       };
     })
     .sort((a, b) => b.mentionCount - a.mentionCount || b.avgMood - a.avgMood);
+
+  if (journalMode === 'private') {
+    const byAvgLevel = [...people].sort((a, b) => b.avgLevel - a.avgLevel || b.mentionCount - a.mentionCount);
+    const byPeakLevel = [...people].sort((a, b) => b.peakLevel - a.peakLevel || b.highIntensityCount - a.highIntensityCount);
+    const byMentionCount = [...people].sort((a, b) => b.mentionCount - a.mentionCount || b.avgLevel - a.avgLevel);
+    const byRecentHeat = [...people].sort((a, b) => b.recentHeat - a.recentHeat || b.avgLevel - a.avgLevel);
+
+    return {
+      people,
+      topTeasing: byAvgLevel.slice(0, 3),
+      peakTriggers: byPeakLevel.slice(0, 3),
+      mostFrequent: byMentionCount.slice(0, 3),
+      risingRecently: byRecentHeat.slice(0, 3),
+      extractionMeta,
+    };
+  }
 
   return {
     people,

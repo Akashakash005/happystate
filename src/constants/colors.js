@@ -29,7 +29,7 @@ export const PUBLIC_COLORS = {
 export const PRIVATE_COLORS = {
   background: "#080808",
   surface: "#121212",
-  primary: "#ff002fe8",
+  primary: "#af1717ec",
   text: "#FFF3F5",
   textMuted: "#C98692",
   border: "#3A0F17",

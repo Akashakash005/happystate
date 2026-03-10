@@ -50,7 +50,10 @@ const PRIVATE_SUGGESTIONS = [
 export default function JournalChatScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isPrivateMode } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(
+    () => createStyles(colors, isPrivateMode),
+    [colors, isPrivateMode],
+  );
   const journalMode = isPrivateMode ? "private" : "public";
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState("");
@@ -656,7 +659,7 @@ export default function JournalChatScreen() {
   );
 }
 
-const createStyles = (colors) =>
+const createStyles = (colors, isPrivateMode = false) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -741,7 +744,7 @@ const createStyles = (colors) =>
     },
     aiBubble: {
       alignSelf: "flex-start",
-      backgroundColor: colors.primary,
+      backgroundColor: isPrivateMode ? colors.dangerBorder : colors.primary,
       borderWidth: 1,
       borderColor: "rgba(255,255,255,0.25)",
     },
@@ -754,18 +757,18 @@ const createStyles = (colors) =>
       fontWeight: "600",
     },
     aiBubbleText: {
-      color: colors.surface,
+      color: isPrivateMode ? colors.text : colors.surface,
     },
     aitimeText: {
       marginTop: 6,
       fontSize: 11,
-      color: colors.border,
+      color: isPrivateMode ? colors.text : colors.border,
       opacity: 0.8,
     },
     usertimeText: {
       marginTop: 6,
       fontSize: 11,
-      color: colors.primary,
+      color: isPrivateMode ? colors.text : colors.primary,
       opacity: 0.8,
     },
     loadingBubble: {

@@ -42,11 +42,23 @@ function normalizePerson(person = {}) {
     person: String(person.person || "").trim(),
     mentionCount: Number(person.mentionCount || 0),
     avgMood: Number(person.avgMood || 0),
+    avgLevel: Number(person.avgLevel || 0),
+    peakLevel: Number(person.peakLevel || 0),
+    highIntensityCount: Number(person.highIntensityCount || 0),
+    recentHeat: Number(person.recentHeat || 0),
     moodCorrelation: String(person.moodCorrelation || "mixed"),
     confidence: Number(person.confidence || 0),
     aliases: normalizeAliases(person.aliases),
     lastMentionDate: person.lastMentionDate || null,
   };
+}
+
+function normalizePersonNames(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizePerson)
+    .filter((item) => item.key && item.person)
+    .map((item) => item.person);
 }
 
 function normalizeManualEdits(value = {}) {
@@ -70,6 +82,10 @@ function normalizeCircleState(data = {}) {
     people,
     positiveEnergy: Array.isArray(data?.positiveEnergy) ? data.positiveEnergy : [],
     stressCorrelated: Array.isArray(data?.stressCorrelated) ? data.stressCorrelated : [],
+    topTeasing: normalizePersonNames(data?.topTeasing),
+    peakTriggers: normalizePersonNames(data?.peakTriggers),
+    mostFrequent: normalizePersonNames(data?.mostFrequent),
+    risingRecently: normalizePersonNames(data?.risingRecently),
     extractionMeta:
       data?.extractionMeta && typeof data.extractionMeta === "object"
         ? {
@@ -105,6 +121,10 @@ function applyManualEdits(circleState) {
     people,
     positiveEnergy: people.filter((person) => person.avgMood >= 0.2).map((person) => person.person),
     stressCorrelated: people.filter((person) => person.avgMood <= -0.2).map((person) => person.person),
+    topTeasing: Array.isArray(circleState?.topTeasing) ? circleState.topTeasing : [],
+    peakTriggers: Array.isArray(circleState?.peakTriggers) ? circleState.peakTriggers : [],
+    mostFrequent: Array.isArray(circleState?.mostFrequent) ? circleState.mostFrequent : [],
+    risingRecently: Array.isArray(circleState?.risingRecently) ? circleState.risingRecently : [],
     extractionMeta: circleState?.extractionMeta || null,
     manualEdits,
   };
@@ -177,6 +197,18 @@ export async function refreshCircleState({ journalEntries = null, mode = null } 
       : [],
     stressCorrelated: Array.isArray(analysis?.stressCorrelated)
       ? analysis.stressCorrelated.map((person) => person.person)
+      : [],
+    topTeasing: Array.isArray(analysis?.topTeasing)
+      ? analysis.topTeasing.map((person) => person.person)
+      : [],
+    peakTriggers: Array.isArray(analysis?.peakTriggers)
+      ? analysis.peakTriggers.map((person) => person.person)
+      : [],
+    mostFrequent: Array.isArray(analysis?.mostFrequent)
+      ? analysis.mostFrequent.map((person) => person.person)
+      : [],
+    risingRecently: Array.isArray(analysis?.risingRecently)
+      ? analysis.risingRecently.map((person) => person.person)
       : [],
     extractionMeta: analysis?.extractionMeta || null,
     manualEdits: current.manualEdits || {},
