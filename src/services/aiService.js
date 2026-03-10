@@ -1,13 +1,15 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   compressYearToQuarterly,
   estimatePayloadTokens,
   getMoodDataByRange,
-} from '../utils/moodRangeFilter';
-import { getProfile } from './profileService';
+} from "../utils/moodRangeFilter";
+import { getProfile } from "./profileService";
+import { chatWithPuter } from "./puterService";
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-const PRIMARY_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || "";
+const PRIMARY_MODEL =
+  process.env.EXPO_PUBLIC_GEMINI_MODEL || "gemini-2.5-flash";
 const DAILY_LIMIT = 50;
 const YEAR_TOKEN_THRESHOLD = 1200;
 
@@ -29,51 +31,91 @@ async function incrementUsageCount() {
 
 function compactUserProfile(profile = {}) {
   return {
-    uid: profile.uid || '',
-    displayName: (profile.displayName || '').slice(0, 50),
-    ageGroup: profile.ageGroup || '',
-    timezone: profile.timezone || '',
+    uid: profile.uid || "",
+    displayName: (profile.displayName || "").slice(0, 50),
+    ageGroup: profile.ageGroup || "",
+    timezone: profile.timezone || "",
     personalDetails: profile.personalDetails || {},
     preferences: profile.preferences || {},
   };
 }
 
 function getToneInstruction(aiTone) {
-  if (aiTone === 'Direct') return 'Be clear and concise, avoid emotional language.';
-  if (aiTone === 'Motivational') return 'Be uplifting and action-oriented with encouraging language.';
-  return 'Respond softly and empathetically.';
+  if (aiTone === "Direct")
+    return "Be clear and concise, avoid emotional language.";
+  if (aiTone === "Motivational")
+    return "Be uplifting and action-oriented with encouraging language.";
+  return "Respond softly and empathetically.";
 }
 
 function getDepthInstruction(suggestionDepth) {
-  if (suggestionDepth === 'Quick') {
+  if (suggestionDepth === "Quick") {
     return {
-      instruction: 'Keep it brief and practical.',
+      instruction: "Keep it brief and practical.",
       wordLimit: 120,
     };
   }
   return {
-    instruction: 'Provide slightly more context and explanation while staying concise.',
+    instruction:
+      "Provide slightly more context and explanation while staying concise.",
     wordLimit: 180,
   };
 }
 
 function buildRangeInstruction(selectedRange) {
-  if (selectedRange === 'day') return 'Focus on short-term support for today.';
-  if (selectedRange === 'week') return 'Analyze trend and pattern shifts across the week.';
-  if (selectedRange === 'month') return 'Analyze behavioral patterns and emotional stability across the month.';
-  return 'Provide deep reflection and long-term advice based on yearly patterns.';
+  if (selectedRange === "day") return "Focus on short-term support for today.";
+  if (selectedRange === "week")
+    return "Analyze trend and pattern shifts across the week.";
+  if (selectedRange === "month")
+    return "Analyze behavioral patterns and emotional stability across the month.";
+  return "Provide deep reflection and long-term advice based on yearly patterns.";
 }
 
-function buildPrompt({ selectedRange, emotionalSummary, userProfile }) {
+function buildPrompt({
+  selectedRange,
+  emotionalSummary,
+  userProfile,
+  insightMode = "public",
+}) {
   const prefs = userProfile?.preferences || {};
-  const toneInstruction = getToneInstruction(prefs.aiTone || 'Gentle');
-  const depth = getDepthInstruction(prefs.suggestionDepth || 'Detailed');
+  const toneInstruction = getToneInstruction(prefs.aiTone || "Gentle");
+  const depth = getDepthInstruction(prefs.suggestionDepth || "Detailed");
   const privacyInstruction = prefs.allowLongTermAnalysis
-    ? 'Long-term analysis is allowed if helpful.'
-    : 'Do not provide long-term analysis, keep recommendations within the selected range only.';
+    ? "Long-term analysis is allowed if helpful."
+    : "Do not provide long-term analysis, keep recommendations within the selected range only.";
   const supportSuggestionInstruction = prefs.showProfessionalSupportSuggestions
-    ? 'If risk appears elevated, you may suggest seeking professional support in a gentle way.'
-    : 'Do not include professional support suggestions.';
+    ? "If risk appears elevated, you may suggest seeking professional support in a gentle way."
+    : "Do not include professional support suggestions.";
+  const isPrivate = insightMode === "private";
+
+  if (isPrivate) {
+    return `
+Nee oru private pattern-reading assistant da, user oda hidden side ku machi.
+Direct aa, cool aa, non-judgmental aa iru da.
+Moral pesadha. Shock aagadha. Clinical aa sound aagadha.
+Focus on urges, intensity loops, rebound patterns, hidden triggers, self-control patterns full on.
+
+${depth.instruction}
+${privacyInstruction}
+${buildRangeInstruction(selectedRange)}
+Analyze the following private-character summary:
+${JSON.stringify({ selectedRange, emotionalSummary, userProfile })}
+Provide:
+1. Current heat or intensity pattern
+2. Trigger or loop to watch
+3. One boundary or control adjustment
+4. One confronting reflection
+Keep under ${depth.wordLimit} words.
+Write in short sections with these exact headings:
+
+WHAT IM NOTICING:
+WATCH FOR:
+TRY THIS TOMORROW:
+REFLECTION:
+Under TRY THIS TOMORROW provide 2-3 concrete bullet points.
+Pure tanglish bad boy vibe la hot aa pesu da. Sunni, fap, heat, loop ellam direct ah use pannu. No token, no technical shit.
+    `.trim();
+  }
 
   return `
 You are a personal emotional wellness assistant.
@@ -108,44 +150,54 @@ Limit response to ${depth.wordLimit} words.
   `.trim();
 }
 
-async function callGeminiDirectly({ selectedRange, emotionalSummary, userProfile }) {
+async function callGeminiDirectly({
+  selectedRange,
+  emotionalSummary,
+  userProfile,
+  insightMode,
+}) {
   if (!GEMINI_API_KEY) {
-    throw new Error('Missing EXPO_PUBLIC_GEMINI_API_KEY for direct Gemini mode.');
+    throw new Error(
+      "Missing EXPO_PUBLIC_GEMINI_API_KEY for direct Gemini mode.",
+    );
   }
 
   const prompt = buildPrompt({
     selectedRange,
     emotionalSummary,
     userProfile,
+    insightMode,
   });
 
   const modelCandidates = [
     PRIMARY_MODEL,
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-2.5-flash-lite',
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash-lite",
   ].filter(Boolean);
 
-  let lastError = 'Gemini request failed';
+  let lastError = "Gemini request failed";
 
   for (let i = 0; i < modelCandidates.length; i += 1) {
     const model = modelCandidates[i];
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
         }),
-      }
+      },
     );
 
     if (!response.ok) {
       const text = await response.text();
       lastError = text || `Gemini request failed for ${model}`;
       const shouldTryNext =
-        response.status === 404 || response.status === 429 || response.status >= 500;
+        response.status === 404 ||
+        response.status === 429 ||
+        response.status >= 500;
       if (shouldTryNext && i < modelCandidates.length - 1) {
         continue;
       }
@@ -155,34 +207,55 @@ async function callGeminiDirectly({ selectedRange, emotionalSummary, userProfile
     const data = await response.json();
     const insight =
       data?.candidates?.[0]?.content?.parts
-        ?.map((p) => p?.text || '')
-        .join('\n')
-        .trim() || '';
+        ?.map((p) => p?.text || "")
+        .join("\n")
+        .trim() || "";
     return insight;
   }
 
   throw new Error(lastError);
 }
 
+async function callGrokViaPuter({
+  selectedRange,
+  emotionalSummary,
+  userProfile,
+  insightMode,
+}) {
+  const prompt = buildPrompt({
+    selectedRange,
+    emotionalSummary,
+    userProfile,
+    insightMode,
+  });
+
+  return chatWithPuter(prompt, {
+    model: "grok-4-fast",
+  });
+}
+
 export async function generateInsight({
   allEntries,
   selectedRange,
   userProfile,
+  insightMode = "public",
 }) {
   const usage = await getUsageCount();
   if (usage >= DAILY_LIMIT) {
-    const error = new Error('Daily AI insight limit reached (50/day).');
-    error.code = 'DAILY_LIMIT_REACHED';
+    const error = new Error("Daily AI insight limit reached (50/day).");
+    error.code = "DAILY_LIMIT_REACHED";
     throw error;
   }
 
   const savedProfile = await getProfile();
-  const preferredRange = (savedProfile.defaultInsightRange || 'Week').toLowerCase();
+  const preferredRange = (
+    savedProfile.defaultInsightRange || "Week"
+  ).toLowerCase();
   const effectiveRange = selectedRange || preferredRange;
 
   let emotionalSummary = getMoodDataByRange(allEntries, effectiveRange);
 
-  if (effectiveRange === 'year') {
+  if (effectiveRange === "year") {
     const yearlyPayload = {
       userProfile: compactUserProfile(userProfile),
       emotionalSummary,
@@ -196,15 +269,15 @@ export async function generateInsight({
 
   const compactProfile = compactUserProfile({
     ...userProfile,
-    displayName: savedProfile.name || userProfile?.displayName || '',
+    displayName: savedProfile.name || userProfile?.displayName || "",
     personalDetails: {
-      name: savedProfile.name || '',
-      age: savedProfile.age || '',
-      profession: savedProfile.profession || '',
-      weight: savedProfile.weight || '',
-      height: savedProfile.height || '',
-      gender: savedProfile.gender || '',
-      about: savedProfile.about || '',
+      name: savedProfile.name || "",
+      age: savedProfile.age || "",
+      profession: savedProfile.profession || "",
+      weight: savedProfile.weight || "",
+      height: savedProfile.height || "",
+      gender: savedProfile.gender || "",
+      about: savedProfile.about || "",
     },
     preferences: {
       stressLevel: savedProfile.stressLevel,
@@ -215,14 +288,24 @@ export async function generateInsight({
       suggestionDepth: savedProfile.suggestionDepth,
       defaultInsightRange: savedProfile.defaultInsightRange,
       allowLongTermAnalysis: savedProfile.allowLongTermAnalysis,
-      showProfessionalSupportSuggestions: savedProfile.showProfessionalSupportSuggestions,
+      showProfessionalSupportSuggestions:
+        savedProfile.showProfessionalSupportSuggestions,
     },
   });
-  const insight = await callGeminiDirectly({
-    selectedRange: effectiveRange,
-    emotionalSummary,
-    userProfile: compactProfile,
-  });
+  const insight =
+    insightMode === "private"
+      ? await callGrokViaPuter({
+          selectedRange: effectiveRange,
+          emotionalSummary,
+          userProfile: compactProfile,
+          insightMode,
+        })
+      : await callGeminiDirectly({
+          selectedRange: effectiveRange,
+          emotionalSummary,
+          userProfile: compactProfile,
+          insightMode,
+        });
 
   const newUsage = await incrementUsageCount();
 

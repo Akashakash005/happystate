@@ -22,12 +22,44 @@ function capitalize(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function buildInsights(entries, stats) {
+function buildInsights(entries, stats, isPrivateMode = false) {
   if (!entries.length) {
-    return ["Start tracking daily to unlock personalized insights."];
+    return [
+      isPrivateMode
+        ? "Start logging private levels to unlock your hidden pattern insights."
+        : "Start tracking daily to unlock personalized insights.",
+    ];
   }
 
   const messages = [];
+
+  if (isPrivateMode) {
+    if (stats.trend === "up")
+      messages.push(
+        "Your private intensity is climbing. Watch what is feeding the build-up.",
+      );
+    if (stats.trend === "down")
+      messages.push(
+        "Your private charge has cooled recently. Notice whether that feels like relief, avoidance, or recovery.",
+      );
+    if (stats.trend === "stable")
+      messages.push(
+        "Your private pattern looks steady. That makes trigger timing easier to spot.",
+      );
+
+    if (stats.streak >= 5)
+      messages.push(`Consistent private logging: ${stats.streak}-day streak.`);
+    if (stats.average >= 4)
+      messages.push(
+        "Your recent private levels stay high. Look for repeating time slots, cues, and loops.",
+      );
+    if (stats.average < 3)
+      messages.push(
+        "Your private levels have stayed relatively low. That can still reveal useful contrast against your public pattern.",
+      );
+
+    return messages;
+  }
 
   if (stats.trend === "up")
     messages.push(
@@ -56,7 +88,7 @@ function buildInsights(entries, stats) {
   return messages;
 }
 
-function parseInsightSections(text) {
+function parseInsightSections(text, isPrivateMode = false) {
   const lines = String(text || "")
     .replace(/\r/g, "")
     .split("\n")
@@ -64,14 +96,26 @@ function parseInsightSections(text) {
     .filter(Boolean);
 
   const sectionDefs = [
-    { key: "trend", heading: "WHAT IM NOTICING", title: "What I am Noticing" },
-    { key: "risk", heading: "WATCH FOR", title: "Watch For" },
+    {
+      key: "trend",
+      heading: "WHAT IM NOTICING",
+      title: isPrivateMode ? "Current Heat" : "What I am Noticing",
+    },
+    {
+      key: "risk",
+      heading: "WATCH FOR",
+      title: isPrivateMode ? "Trigger Pattern" : "Watch For",
+    },
     {
       key: "actions",
       heading: "TRY THIS TOMORROW",
-      title: "Try This Tomorrow",
+      title: isPrivateMode ? "Boundary Shift" : "Try This Tomorrow",
     },
-    { key: "reflection", heading: "REFLECTION", title: "Reflection" },
+    {
+      key: "reflection",
+      heading: "REFLECTION",
+      title: isPrivateMode ? "Shadow Reflection" : "Reflection",
+    },
   ];
 
   const result = { trend: "", risk: "", actions: "", reflection: "" };
@@ -123,7 +167,7 @@ function confidenceLabel(entryCount, range) {
 }
 
 export default function InsightsScreen() {
-  const { colors } = useTheme();
+  const { colors, isPrivateMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [entries, setEntries] = useState([]);
   const [selectedRange, setSelectedRange] = useState("week");
@@ -148,13 +192,13 @@ export default function InsightsScreen() {
 
   const stats = useMemo(() => getStats(entries), [entries]);
   const insights = useMemo(
-    () => buildInsights(entries, stats),
-    [entries, stats],
+    () => buildInsights(entries, stats, isPrivateMode),
+    [entries, isPrivateMode, stats],
   );
 
   const aiCards = useMemo(
-    () => parseInsightSections(insightText),
-    [insightText],
+    () => parseInsightSections(insightText, isPrivateMode),
+    [insightText, isPrivateMode],
   );
 
   const handleLogout = async () => {
@@ -174,6 +218,7 @@ export default function InsightsScreen() {
       const result = await generateInsight({
         allEntries: entries,
         selectedRange,
+        insightMode: isPrivateMode ? "private" : "public",
         userProfile: {
           uid: user?.uid,
           displayName: profile?.displayName || "",
@@ -203,14 +248,20 @@ export default function InsightsScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
-        <Text style={styles.heroTitle}>Personal Insights</Text>
+        <Text style={styles.heroTitle}>
+          {isPrivateMode ? "Private Insights" : "Personal Insights"}
+        </Text>
         <Text style={styles.heroText}>
-          Based on your tracked mood history, here are actionable observations.
+          {isPrivateMode
+            ? "Based on your private tracking, here are hidden patterns, trigger signals, and control insights."
+            : "Based on your tracked mood history, here are actionable observations."}
         </Text>
       </View>
 
       <View style={styles.aiCard}>
-        <Text style={styles.aiTitle}>AI Suggestion</Text>
+        <Text style={styles.aiTitle}>
+          {isPrivateMode ? "Private Pattern Reading" : "AI Suggestion"}
+        </Text>
         <View style={styles.rangeRow}>
           {RANGE_OPTIONS.map((range) => {
             const active = range === selectedRange;
@@ -246,7 +297,11 @@ export default function InsightsScreen() {
         {insightLoading ? (
           <View style={styles.loadingCard}>
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.loadingText}>Building your reflection...</Text>
+            <Text style={styles.loadingText}>
+              {isPrivateMode
+                ? "Reading your private pattern..."
+                : "Building your reflection..."}
+            </Text>
           </View>
         ) : null}
 
@@ -257,18 +312,20 @@ export default function InsightsScreen() {
         {insightSummary ? (
           <View style={styles.snapshotCard}>
             <Text style={styles.snapshotTitle}>
-              {capitalize(selectedRange)} Snapshot
+              {capitalize(selectedRange)} {isPrivateMode ? "Private Snapshot" : "Snapshot"}
             </Text>
             <Text style={styles.snapshotLine}>
-              Average Mood: {moodLabel(insightSummary?.overallAverage || 0)} (
-              {(insightSummary?.overallAverage || 0).toFixed(2)})
+              {isPrivateMode ? "Average Level" : "Average Mood"}:{" "}
+              {isPrivateMode
+                ? (((insightSummary?.overallAverage || 0) * 2 + 3).toFixed(1) + "/5")
+                : `${moodLabel(insightSummary?.overallAverage || 0)} (${(insightSummary?.overallAverage || 0).toFixed(2)})`}
             </Text>
             <Text style={styles.snapshotLine}>
-              Stability: {insightSummary?.stabilityScore ?? 0}% (
+              {isPrivateMode ? "Pattern Stability" : "Stability"}: {insightSummary?.stabilityScore ?? 0}% (
               {stabilityLabel(insightSummary?.stabilityScore ?? 0)})
             </Text>
             <Text style={styles.snapshotLine}>
-              Most Challenging Time:{" "}
+              {isPrivateMode ? "Most Charged Window" : "Most Challenging Time"}:{" "}
               {capitalize(insightSummary?.commonNegativeTime || "n/a")}
             </Text>
             <Text style={styles.snapshotLine}>

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Keyboard,
@@ -69,8 +69,19 @@ function getSlotByHour(hour) {
 
 export default function HomeScreen() {
   const { user, profile } = useAuth();
-  const { colors } = useTheme();
+  const { colors, isPrivateMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const defaultEntryMood = isPrivateMode ? 1 : 3;
+  const badgeShadowStyle = useMemo(
+    () => ({
+      shadowColor: isPrivateMode ? "#f8aeb9f2" : "#000000",
+      shadowOpacity: isPrivateMode ? 0.42 : 0.48,
+      shadowRadius: isPrivateMode ? 10 : 6,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: isPrivateMode ? 7 : 4,
+    }),
+    [isPrivateMode],
+  );
   const [entries, setEntries] = useState([]);
   const [profileName, setProfileName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -79,7 +90,7 @@ export default function HomeScreen() {
   const [entrySlot, setEntrySlot] = useState(
     getSlotByHour(new Date().getHours()),
   );
-  const [entryMood, setEntryMood] = useState(3);
+  const [entryMood, setEntryMood] = useState(defaultEntryMood);
   const [entryNote, setEntryNote] = useState("");
   const [editingEntryId, setEditingEntryId] = useState(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -88,7 +99,7 @@ export default function HomeScreen() {
   const [editSlot, setEditSlot] = useState(
     getSlotByHour(new Date().getHours()),
   );
-  const [editMood, setEditMood] = useState(3);
+  const [editMood, setEditMood] = useState(defaultEntryMood);
   const [editNote, setEditNote] = useState("");
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -103,6 +114,12 @@ export default function HomeScreen() {
   const [customEndDate, setCustomEndDate] = useState(initialCustomRange.end);
   const [showCustomStartPicker, setShowCustomStartPicker] = useState(false);
   const [showCustomEndPicker, setShowCustomEndPicker] = useState(false);
+
+  useEffect(() => {
+    if (!editingEntryId) {
+      setEntryMood(defaultEntryMood);
+    }
+  }, [defaultEntryMood, editingEntryId]);
 
   const loadEntries = useCallback(async () => {
     const [all, storedProfile] = await Promise.all([
@@ -138,23 +155,23 @@ export default function HomeScreen() {
     const slot = getSlotByHour(now.getHours());
     setEntryDate(now);
     setEntrySlot(slot);
-    setEntryMood(3);
+    setEntryMood(defaultEntryMood);
     setEntryNote("");
     setEditingEntryId(null);
-  }, []);
+  }, [defaultEntryMood]);
 
   const onChangeDraftDate = (_, selectedDate) => {
     setShowDatePicker(false);
     if (!selectedDate) return;
     setEntryDate(selectedDate);
-    setEntryMood(3);
+    setEntryMood(defaultEntryMood);
     setEntryNote("");
     setEditingEntryId(null);
   };
 
   const onChangeSlot = (slot) => {
     setEntrySlot(slot);
-    setEntryMood(3);
+    setEntryMood(defaultEntryMood);
     setEntryNote("");
     setEditingEntryId(null);
   };
@@ -542,7 +559,7 @@ export default function HomeScreen() {
                 {formatLongDate(group.date)}
               </Text>
               {group.items.map((entry) => {
-                const meta = getMoodMeta(entry.mood);
+                const meta = getMoodMeta(entry.mood, { isPrivateMode });
                 return (
                   <LinearGradient
                     key={entry.id}
@@ -587,11 +604,14 @@ export default function HomeScreen() {
                       <Text style={styles.entryNote}>{entry.note}</Text>
                     ) : null}
 
-                    <View
-                      style={[styles.badge, { backgroundColor: meta.color }]}
+                    <LinearGradient
+                      colors={meta.gradient || [meta.color, meta.color]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={[styles.badge, badgeShadowStyle]}
                     >
                       <Text style={styles.badgeText}>{meta.label}</Text>
-                    </View>
+                    </LinearGradient>
                   </LinearGradient>
                 );
               })}
@@ -735,279 +755,280 @@ export default function HomeScreen() {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, paddingBottom: 36 },
-  welcomeText: {
-    paddingLeft: 5,
-    color: colors.text,
-    fontWeight: "800",
-    fontSize: 20,
-    marginBottom: 10,
-  },
-  welcomeNameText: {
-    color: "#F59E0B",
-    fontWeight: "900",
-    fontSize: 25,
-  },
-  formCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    marginBottom: 16,
-  },
-  title: { fontSize: 26, fontWeight: "800", color: colors.text },
-  metaText: {
-    marginTop: 4,
-    marginBottom: 10,
-    color: colors.text,
-    fontWeight: "600",
-    paddingHorizontal: 10,
-  },
-  dateButton: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: colors.inputAccentBorder,
-    borderRadius: 10,
-    backgroundColor: colors.inputAccent,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 10,
-  },
-  dateButtonText: { color: colors.primary, fontWeight: "700" },
-  slotRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 10,
-  },
-  slotButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 10,
-    backgroundColor: colors.inputSurface,
-    alignItems: "center",
-  },
-  slotButtonActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.inputAccent,
-  },
-  slotButtonText: {
-    color: colors.textMuted,
-    fontWeight: "600",
-    fontSize: 12,
-  },
-  slotButtonTextActive: {
-    color: colors.primary,
-  },
-  input: {
-    marginTop: 12,
-    minHeight: 86,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    textAlignVertical: "top",
-    color: colors.text,
-    backgroundColor: colors.inputSurface,
-  },
-  inputDisabled: {
-    opacity: 0.6,
-  },
-  entryActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 10,
-  },
-  secondaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    height: 46,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.inputSurface,
-  },
-  secondaryButtonText: { color: colors.textMuted, fontWeight: "700" },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    height: 46,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: colors.primary,
-  },
-  primaryButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 16 },
-  buttonDisabled: { opacity: 0.7 },
-  lockedHint: {
-    color: colors.text,
-    fontWeight: "700",
-    marginBottom: 8,
-    fontSize: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: colors.text,
-    marginBottom: 8,
-  },
-  historyFilterRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingBottom: 2,
-    marginBottom: 6,
-  },
-  historyFilterChip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.inputSurface,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  historyFilterChipActive: {
-    backgroundColor: colors.inputAccent,
-    borderColor: colors.inputAccentBorder,
-  },
-  historyFilterText: {
-    color: colors.textMuted,
-    fontWeight: "600",
-    fontSize: 12,
-  },
-  historyFilterTextActive: {
-    color: colors.primary,
-  },
-  historyRangeText: {
-    color: colors.textMuted,
-    fontWeight: "600",
-    marginBottom: 8,
-    fontSize: 12,
-  },
-  customRangeRow: {
-    marginTop: 2,
-    marginBottom: 6,
-    flexDirection: "row",
-    gap: 8,
-  },
-  customDateButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: colors.inputSurface,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  customDateText: {
-    color: colors.text,
-    fontWeight: "600",
-    fontSize: 12,
-  },
-  empty: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    padding: 14,
-  },
-  emptyText: { color: colors.textMuted },
-  dateGroup: { marginBottom: 14 },
-  dateHeader: {
-    color: colors.text,
-    fontWeight: "800",
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  entryCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-  },
-  entryTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  entrySlot: { color: colors.text, fontWeight: "700" },
-  entryTopActions: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  iconActionButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deleteIconActionButton: {
-    borderColor: colors.dangerBorder,
-    backgroundColor: colors.dangerSurface,
-  },
-  badgeText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  entryNote: {
-    marginTop: 8,
-    color: colors.text,
-    lineHeight: 20,
-    fontWeight: "700",
-    fontStyle: "italic",
-  },
-  badge: {
-    marginTop: 10,
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 14,
-  },
-  editModalCard: {
-    width: "100%",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-  },
-  deleteModalCard: {
-    width: "100%",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    backgroundColor: colors.surface,
-  },
-  deleteModalTitle: {
-    color: colors.text,
-    fontWeight: "800",
-    fontSize: 18,
-  },
-  deleteModalMessage: {
-    marginTop: 8,
-    color: colors.textMuted,
-    lineHeight: 20,
-  },
-  deleteConfirmButton: {
-    backgroundColor: colors.danger,
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: 16, paddingBottom: 36 },
+    welcomeText: {
+      paddingLeft: 5,
+      color: colors.text,
+      fontWeight: "800",
+      fontSize: 20,
+      marginBottom: 10,
+    },
+    welcomeNameText: {
+      color: "#F59E0B",
+      fontWeight: "900",
+      fontSize: 25,
+    },
+    formCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 14,
+      marginBottom: 16,
+    },
+    title: { fontSize: 26, fontWeight: "800", color: colors.text },
+    metaText: {
+      marginTop: 4,
+      marginBottom: 10,
+      color: colors.text,
+      fontWeight: "600",
+      paddingHorizontal: 10,
+    },
+    dateButton: {
+      alignSelf: "flex-start",
+      borderWidth: 1,
+      borderColor: colors.inputAccentBorder,
+      borderRadius: 10,
+      backgroundColor: colors.inputAccent,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginBottom: 10,
+    },
+    dateButtonText: { color: colors.primary, fontWeight: "700" },
+    slotRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: 8,
+      marginBottom: 10,
+    },
+    slotButton: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingVertical: 10,
+      backgroundColor: colors.inputSurface,
+      alignItems: "center",
+    },
+    slotButtonActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.inputAccent,
+    },
+    slotButtonText: {
+      color: colors.textMuted,
+      fontWeight: "600",
+      fontSize: 12,
+    },
+    slotButtonTextActive: {
+      color: colors.primary,
+    },
+    input: {
+      marginTop: 12,
+      minHeight: 86,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      textAlignVertical: "top",
+      color: colors.text,
+      backgroundColor: colors.inputSurface,
+    },
+    inputDisabled: {
+      opacity: 0.6,
+    },
+    entryActions: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 10,
+    },
+    secondaryButton: {
+      flex: 1,
+      borderRadius: 12,
+      height: 46,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.inputSurface,
+    },
+    secondaryButtonText: { color: colors.textMuted, fontWeight: "700" },
+    primaryButton: {
+      flex: 1,
+      borderRadius: 12,
+      height: 46,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.primary,
+    },
+    primaryButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 16 },
+    buttonDisabled: { opacity: 0.7 },
+    lockedHint: {
+      color: colors.text,
+      fontWeight: "700",
+      marginBottom: 8,
+      fontSize: 12,
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: colors.text,
+      marginBottom: 8,
+    },
+    historyFilterRow: {
+      flexDirection: "row",
+      gap: 8,
+      paddingBottom: 2,
+      marginBottom: 6,
+    },
+    historyFilterChip: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.inputSurface,
+      borderRadius: 999,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    historyFilterChipActive: {
+      backgroundColor: colors.inputAccent,
+      borderColor: colors.inputAccentBorder,
+    },
+    historyFilterText: {
+      color: colors.textMuted,
+      fontWeight: "600",
+      fontSize: 12,
+    },
+    historyFilterTextActive: {
+      color: colors.primary,
+    },
+    historyRangeText: {
+      color: colors.textMuted,
+      fontWeight: "600",
+      marginBottom: 8,
+      fontSize: 12,
+    },
+    customRangeRow: {
+      marginTop: 2,
+      marginBottom: 6,
+      flexDirection: "row",
+      gap: 8,
+    },
+    customDateButton: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      backgroundColor: colors.inputSurface,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+    },
+    customDateText: {
+      color: colors.text,
+      fontWeight: "600",
+      fontSize: 12,
+    },
+    empty: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      padding: 14,
+    },
+    emptyText: { color: colors.textMuted },
+    dateGroup: { marginBottom: 14 },
+    dateHeader: {
+      color: colors.text,
+      fontWeight: "800",
+      fontSize: 16,
+      marginBottom: 8,
+    },
+    entryCard: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 8,
+    },
+    entryTopRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    entrySlot: { color: colors.text, fontWeight: "700" },
+    entryTopActions: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    iconActionButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    deleteIconActionButton: {
+      borderColor: colors.dangerBorder,
+      backgroundColor: colors.dangerSurface,
+    },
+    badgeText: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    entryNote: {
+      marginTop: 8,
+      color: colors.text,
+      lineHeight: 20,
+      fontWeight: "700",
+      fontStyle: "italic",
+    },
+    badge: {
+      marginTop: 10,
+      alignSelf: "flex-start",
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: colors.overlay,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 14,
+    },
+    editModalCard: {
+      width: "100%",
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 14,
+    },
+    deleteModalCard: {
+      width: "100%",
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 16,
+      backgroundColor: colors.surface,
+    },
+    deleteModalTitle: {
+      color: colors.text,
+      fontWeight: "800",
+      fontSize: 18,
+    },
+    deleteModalMessage: {
+      marginTop: 8,
+      color: colors.textMuted,
+      lineHeight: 20,
+    },
+    deleteConfirmButton: {
+      backgroundColor: colors.danger,
+    },
+  });

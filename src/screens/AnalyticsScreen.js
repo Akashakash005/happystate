@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Animated,
   Dimensions,
@@ -52,17 +58,165 @@ const BASE_FILTERS = [
 const CALENDAR_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const PRODUCTIVITY_LEVELS = [
-  { value: 0, label: "0 / Grey", subtitle: "No productivity log", color: "#9CA3AF", textColor: "#0F172A" },
-  { value: 1, label: "1 / Yellow", subtitle: "Some progress", color: "#FACC15", textColor: "#0F172A" },
-  { value: 2, label: "2 / Light Green", subtitle: "Good output", color: "#86EFAC", textColor: "#14532D" },
-  { value: 3, label: "3 / Dark Green", subtitle: "Locked in", color: "#166534", textColor: "#FFFFFF" },
+  {
+    value: 0,
+    label: "0 / Grey",
+    subtitle: "No productivity log",
+    color: "#9CA3AF",
+    textColor: "#0F172A",
+  },
+  {
+    value: 1,
+    label: "1 / Yellow",
+    subtitle: "Some progress",
+    color: "#FACC15",
+    textColor: "#0F172A",
+  },
+  {
+    value: 2,
+    label: "2 / Light Green",
+    subtitle: "Good output",
+    color: "#86EFAC",
+    textColor: "#14532D",
+  },
+  {
+    value: 3,
+    label: "3 / Dark Green",
+    subtitle: "Locked in",
+    color: "#166534",
+    textColor: "#FFFFFF",
+  },
 ];
 
 const PRIVATE_LEVELS = [
-  { value: 0, label: "0 / Silver", subtitle: "Calm day", color: "#C0C0C0", textColor: "#111111" },
-  { value: 1, label: "1 / Pink", subtitle: "Teasing", color: "#FF8FB1", textColor: "#4A1022" },
-  { value: 2, label: "2 / Dark Pink", subtitle: "Naughty", color: "#C2185B", textColor: "#FFFFFF" },
-  { value: 3, label: "3 / Dark Red", subtitle: "Off the rails", color: "#7A0019", textColor: "#FFFFFF" },
+  {
+    value: 0,
+    label: "0 / Silver",
+    subtitle: "Calm day",
+    color: "#C0C0C0",
+    textColor: "#111111",
+  },
+  {
+    value: 1,
+    label: "1 / Pink",
+    subtitle: "Teasing",
+    color: "#FF8FB1",
+    textColor: "#4A1022",
+  },
+  {
+    value: 2,
+    label: "2 / Dark Pink",
+    subtitle: "Naughty",
+    color: "#C2185B",
+    textColor: "#FFFFFF",
+  },
+  {
+    value: 3,
+    label: "3 / Dark Red",
+    subtitle: "Off the rails",
+    color: "#7A0019",
+    textColor: "#FFFFFF",
+  },
+];
+
+const PUBLIC_SCORE_FAQ = [
+  {
+    key: "stability",
+    title: "Stability Score",
+    description:
+      "How steady your mood has been across the selected period. Higher is steadier.",
+  },
+  {
+    key: "variability",
+    title: "Variability",
+    description:
+      "How much your mood swings up and down. Higher means larger fluctuations.",
+  },
+  {
+    key: "trend",
+    title: "Trend Direction",
+    description:
+      "Change from early period to latest period. Positive means improving, negative means declining.",
+  },
+  {
+    key: "recovery",
+    title: "Recovery Score",
+    description:
+      "How quickly mood returns to neutral/positive after low states. Higher means faster recovery.",
+  },
+  {
+    key: "peak",
+    title: "Peak Intensity",
+    description:
+      "Strongest emotional intensity reached, regardless of positive or negative direction.",
+  },
+  {
+    key: "balance",
+    title: "Emotional Balance",
+    description: "Share of positive entries in the selected period.",
+  },
+  {
+    key: "momentum",
+    title: "Momentum (Last 3)",
+    description:
+      "Recent direction based on your last three points. Positive means recent uplift.",
+  },
+  {
+    key: "resilience",
+    title: "Resilience",
+    description: "Combined indicator of recovery speed, trend, and stability.",
+  },
+];
+
+const PRIVATE_SCORE_FAQ = [
+  {
+    key: "stability",
+    title: "Arousal Stability",
+    description:
+      "How consistent your horny level has been during the period. Higher = more reliably charged (less random flat days).",
+  },
+  {
+    key: "variability",
+    title: "Arousal Swing",
+    description:
+      "How wildly your horniness fluctuates. Higher = bigger ups & downs (explosive highs + dead lows).",
+  },
+  {
+    key: "trend",
+    title: "Desire Trend",
+    description:
+      "Direction of change from start to end of period. Positive = libido / arousal rising over time, negative = fading.",
+  },
+  {
+    key: "recovery",
+    title: "Refractory Recovery",
+    description:
+      "How fast you bounce back to horny/ready after a low or flat period. Higher = shorter downtime between strong sessions.",
+  },
+  {
+    key: "peak",
+    title: "Peak Charge",
+    description:
+      "Highest arousal intensity reached in the period (max level logged). Shows your strongest sparks.",
+  },
+  {
+    key: "balance",
+    title: "Charged Ratio",
+    description:
+      "Percentage of entries where you felt properly horny (above threshold, e.g. ≥4/5 or ≥7/10). Higher = more consistently turned on.",
+  },
+  {
+    key: "momentum",
+    title: "Recent Heat (Last 3)",
+    description:
+      "Direction based on your last three logs. Positive = heating up lately, negative = cooling off.",
+  },
+  {
+    key: "resilience",
+    title: "Libido Resilience",
+    description:
+      "Combined signal of how well you maintain / recover arousal momentum despite flat days or stressors.",
+  },
 ];
 
 function clamp(value, min, max) {
@@ -90,13 +244,23 @@ function scoreToPercent(score) {
   return Math.round(clamp(((score || 0) + 1) * 50, 0, 100));
 }
 
-function slotColor(score) {
+function slotColor(score, isPrivateMode = false) {
+  if (isPrivateMode) {
+    if (score > 0.2) return "#C2185B";
+    if (score < -0.2) return "#C0C0C0";
+    return "#FF8FB1";
+  }
   if (score > 0.2) return "#22C55E";
   if (score < -0.2) return "#EF4444";
   return "#F59E0B";
 }
 
-function scoreLabel(score) {
+function scoreLabel(score, isPrivateMode = false) {
+  if (isPrivateMode) {
+    if (score > 0.2) return "Charged";
+    if (score < -0.2) return "Flat";
+    return "Teasing";
+  }
   if (score > 0.2) return "Positive";
   if (score < -0.2) return "Low";
   return "Neutral";
@@ -184,10 +348,17 @@ function getBucketLabel(dateInput, unit) {
   if (unit === "month") {
     return dateInput.toLocaleDateString("en-US", { month: "short" });
   }
-  return dateInput.toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
+  return dateInput.toLocaleDateString("en-US", {
+    month: "numeric",
+    day: "numeric",
+  });
 }
 
-function findFallbackValueBeforeDate(allEntries, dateStartTs) {
+function findFallbackValueBeforeDate(
+  allEntries,
+  dateStartTs,
+  isPrivateMode = false,
+) {
   const before = (allEntries || [])
     .filter((entry) => {
       const ts = new Date(
@@ -196,22 +367,28 @@ function findFallbackValueBeforeDate(allEntries, dateStartTs) {
       return !Number.isNaN(ts) && ts < dateStartTs;
     })
     .sort((a, b) => toEntryTime(b) - toEntryTime(a));
-  if (!before.length) return 0;
+  if (!before.length) return isPrivateMode ? -1 : 0;
   return toEntryScore(before[0]);
 }
 
 function hexToRgba(hexColor, opacity = 1) {
   const hex = String(hexColor || "#000000").replace("#", "");
-  const safe = hex.length === 3
-    ? `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`
-    : hex.padEnd(6, "0");
+  const safe =
+    hex.length === 3
+      ? `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`
+      : hex.padEnd(6, "0");
   const r = Number.parseInt(safe.slice(0, 2), 16);
   const g = Number.parseInt(safe.slice(2, 4), 16);
   const b = Number.parseInt(safe.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-function getMoodPalette(averageMoodPercent) {
+function getMoodPalette(averageMoodPercent, isPrivateMode = false) {
+  if (isPrivateMode) {
+    if (averageMoodPercent >= 80) return ["#8A0F4D", "#C2185B", "#F8BBD0"];
+    if (averageMoodPercent >= 50) return ["#FFB6C1", "#FFC1D6", "#FFF0F5"];
+    return ["#676565", "#3c2d2d", "#454141"];
+  }
   if (averageMoodPercent >= 80) return ["#29e518", "#6ccb7e", "#e3ffea"];
   if (averageMoodPercent >= 50) return ["#f8e61d", "#ffee6e", "#E3E8FF"];
   return ["#fa6d58", "#ff7c6e", "#E3E8FF"];
@@ -226,7 +403,11 @@ function shiftMonth(date, amount) {
 
 function getCalendarCells(monthDate) {
   const start = startOfMonth(monthDate);
-  const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(
+    start.getFullYear(),
+    start.getMonth() + 1,
+    0,
+  ).getDate();
   const cells = [];
   for (let i = 0; i < start.getDay(); i += 1) cells.push(null);
   for (let day = 1; day <= daysInMonth; day += 1) {
@@ -248,19 +429,36 @@ function getCurrentStreak(logMap) {
   return streak;
 }
 
-function createMetrics(filteredEntries, slotAverage) {
-  const ordered = [...filteredEntries].sort((a, b) => toEntryTime(a) - toEntryTime(b));
+function createMetrics(filteredEntries, slotAverage, isPrivateMode = false) {
+  const ordered = [...filteredEntries].sort(
+    (a, b) => toEntryTime(a) - toEntryTime(b),
+  );
   const scores = ordered.map((entry) => toEntryScore(entry));
+  const levels = ordered.map((entry) => Number(entry?.mood || 3));
   const total = scores.length;
   const meanPercent = scoreToPercent(average(scores));
+  const averageLevel = round2(average(levels));
   const variability = Math.round(clamp(stdDev(scores) * 100, 0, 100));
   const trend = total >= 2 ? round2(scores[total - 1] - scores[0]) : 0;
   const peakIntensity = round2(
-    scores.length ? Math.max(...scores.map((s) => Math.abs(s))) : 0,
+    isPrivateMode
+      ? levels.length
+        ? Math.max(...levels)
+        : 0
+      : scores.length
+        ? Math.max(...scores.map((s) => Math.abs(s)))
+        : 0,
   );
-  const balance = Math.round((scores.filter((s) => s > 0).length / (total || 1)) * 100);
+  const balance = Math.round(
+    ((isPrivateMode
+      ? levels.filter((level) => level >= 4).length
+      : scores.filter((s) => s > 0).length) /
+      (total || 1)) *
+      100,
+  );
   const last3 = scores.slice(-3);
-  const momentum = last3.length >= 2 ? round2(last3[last3.length - 1] - last3[0]) : 0;
+  const momentum =
+    last3.length >= 2 ? round2(last3[last3.length - 1] - last3[0]) : 0;
   const bestSlot = slotAverage.reduce(
     (best, slot) => (slot.average > best.average ? slot : best),
     slotAverage[0] || { slot: "morning", average: 0 },
@@ -271,6 +469,7 @@ function createMetrics(filteredEntries, slotAverage) {
   );
   return {
     averageMoodPercent: meanPercent,
+    averageLevel,
     variability,
     trend,
     peakIntensity,
@@ -289,16 +488,24 @@ export default function AnalyticsScreen() {
   const [activityEntries, setActivityEntries] = useState([]);
   const [filter, setFilter] = useState("week");
   const [referenceDate, setReferenceDate] = useState(new Date());
-  const [trackerMonthDate, setTrackerMonthDate] = useState(startOfMonth(new Date()));
+  const [trackerMonthDate, setTrackerMonthDate] = useState(
+    startOfMonth(new Date()),
+  );
   const [trackerDate, setTrackerDate] = useState(new Date());
   const [trackerScore, setTrackerScore] = useState(0);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showTrackerDatePicker, setShowTrackerDatePicker] = useState(false);
   const [scoreMenuVisible, setScoreMenuVisible] = useState(false);
+  const [faqModalVisible, setFaqModalVisible] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const initialCustomRange = useMemo(() => getDateRange("month", new Date()), []);
-  const [customStartDate, setCustomStartDate] = useState(initialCustomRange.start);
+  const initialCustomRange = useMemo(
+    () => getDateRange("month", new Date()),
+    [],
+  );
+  const [customStartDate, setCustomStartDate] = useState(
+    initialCustomRange.start,
+  );
   const [customEndDate, setCustomEndDate] = useState(initialCustomRange.end);
 
   const load = useCallback(async () => {
@@ -329,8 +536,14 @@ export default function AnalyticsScreen() {
     () => (isPrivateMode ? PRIVATE_LEVELS : PRODUCTIVITY_LEVELS),
     [isPrivateMode],
   );
+  const scoreFaq = useMemo(
+    () => (isPrivateMode ? PRIVATE_SCORE_FAQ : PUBLIC_SCORE_FAQ),
+    [isPrivateMode],
+  );
   const activityLabel = isPrivateMode ? "Naughty" : "Productive";
-  const activityTitle = isPrivateMode ? "Naughty Calendar" : "Productivity Calendar";
+  const activityTitle = isPrivateMode
+    ? "Naughty Calendar"
+    : "Productivity Calendar";
   const activityDescription = isPrivateMode
     ? "One private score per day for how naughty the character felt."
     : "One public score per day for how productive the character felt.";
@@ -384,39 +597,82 @@ export default function AnalyticsScreen() {
     });
     const rangeStart = dateRange.start.getTime();
     const rangeEnd = dateRange.end.getTime();
-    let carry = findFallbackValueBeforeDate(entries, rangeStart);
+    let carry = findFallbackValueBeforeDate(entries, rangeStart, isPrivateMode);
     const filled = [];
     let cursor = getBucketStart(dateRange.start, aggregationUnit);
     while (cursor.getTime() <= rangeEnd) {
       const key = getBucketKey(cursor, aggregationUnit);
       const values = buckets[key];
-      if (values?.length) carry = round2(values.reduce((sum, n) => sum + n, 0) / values.length);
-      filled.push({ label: getBucketLabel(cursor, aggregationUnit), value: carry, key });
+      if (values?.length)
+        carry = round2(values.reduce((sum, n) => sum + n, 0) / values.length);
+      filled.push({
+        label: getBucketLabel(cursor, aggregationUnit),
+        value: carry,
+        key,
+      });
       cursor = advanceBucket(cursor, aggregationUnit);
     }
     return filled;
-  }, [aggregationUnit, dateRange.end, dateRange.start, entries, filteredEntries, filter]);
+  }, [
+    aggregationUnit,
+    dateRange.end,
+    dateRange.start,
+    entries,
+    filteredEntries,
+    filter,
+    isPrivateMode,
+  ]);
 
-  const slotAverage = useMemo(() => calculateSlotAverage(filteredEntries), [filteredEntries]);
+  const slotAverage = useMemo(
+    () => calculateSlotAverage(filteredEntries),
+    [filteredEntries],
+  );
   const stability = useMemo(
     () => calculateStabilityFromSeries(trendSeries.map((item) => item.value)),
     [trendSeries],
   );
   const metrics = useMemo(
-    () => createMetrics(filteredEntries, slotAverage),
-    [filteredEntries, slotAverage],
+    () => createMetrics(filteredEntries, slotAverage, isPrivateMode),
+    [filteredEntries, isPrivateMode, slotAverage],
   );
   const moodColors = useMemo(
-    () => getMoodPalette(metrics.averageMoodPercent),
-    [metrics.averageMoodPercent],
+    () => getMoodPalette(metrics.averageMoodPercent, isPrivateMode),
+    [isPrivateMode, metrics.averageMoodPercent],
   );
   const chartData = useMemo(() => {
     if (!trendSeries.length) return null;
+    const values = trendSeries.map((item) =>
+      isPrivateMode ? round2(item.value * 2 + 3) : item.value,
+    );
+    const labels = trendSeries.map((item) => item.label);
+    const upperAnchor = values.map(() => (isPrivateMode ? 5 : 1));
+    const lowerAnchor = values.map(() => (isPrivateMode ? 1 : -1));
+
     return {
-      labels: trendSeries.map((item) => item.label),
-      values: trendSeries.map((item) => item.value),
+      labels,
+      values,
+      datasets: [
+        {
+          data: values,
+          color: (opacity = 1) => hexToRgba(colors.primary, opacity),
+          strokeWidth: 2,
+          withDots: true,
+        },
+        {
+          data: upperAnchor,
+          color: () => "transparent",
+          strokeWidth: 0,
+          withDots: false,
+        },
+        {
+          data: lowerAnchor,
+          color: () => "transparent",
+          strokeWidth: 0,
+          withDots: false,
+        },
+      ],
     };
-  }, [trendSeries]);
+  }, [colors.primary, isPrivateMode, trendSeries]);
 
   const activityMap = useMemo(
     () =>
@@ -426,7 +682,10 @@ export default function AnalyticsScreen() {
       }, {}),
     [activityEntries],
   );
-  const selectedTrackerDateKey = useMemo(() => toDateKey(trackerDate), [trackerDate]);
+  const selectedTrackerDateKey = useMemo(
+    () => toDateKey(trackerDate),
+    [trackerDate],
+  );
   const selectedTrackerEntry = activityMap[selectedTrackerDateKey] || null;
 
   useEffect(() => {
@@ -437,10 +696,18 @@ export default function AnalyticsScreen() {
     const monthKey = toIsoMonth(trackerMonthDate);
     return activityEntries.filter((entry) => entry.date.startsWith(monthKey));
   }, [activityEntries, trackerMonthDate]);
-  const trackerStreak = useMemo(() => getCurrentStreak(activityMap), [activityMap]);
-  const trackerAverage = useMemo(() => average(monthEntries.map((entry) => Number(entry.score || 0))), [monthEntries]);
+  const trackerStreak = useMemo(
+    () => getCurrentStreak(activityMap),
+    [activityMap],
+  );
+  const trackerAverage = useMemo(
+    () => average(monthEntries.map((entry) => Number(entry.score || 0))),
+    [monthEntries],
+  );
   const trackerLevel = useMemo(
-    () => activityLevels.find((item) => item.value === Number(trackerScore || 0)) || activityLevels[0],
+    () =>
+      activityLevels.find((item) => item.value === Number(trackerScore || 0)) ||
+      activityLevels[0],
     [activityLevels, trackerScore],
   );
 
@@ -449,7 +716,9 @@ export default function AnalyticsScreen() {
       if (filter === "custom") {
         const spanDays = Math.max(
           1,
-          Math.round((customEndDate.getTime() - customStartDate.getTime()) / 86400000) + 1,
+          Math.round(
+            (customEndDate.getTime() - customStartDate.getTime()) / 86400000,
+          ) + 1,
         );
         const shiftMs = direction * spanDays * 86400000;
         setCustomStartDate((prev) => new Date(prev.getTime() + shiftMs));
@@ -503,8 +772,15 @@ export default function AnalyticsScreen() {
   }, [selectedTrackerDateKey]);
 
   const chartWidth = Math.max(Dimensions.get("window").width - 56, 300);
-  const chartHint =
-    filter === "day"
+  const chartHint = isPrivateMode
+    ? filter === "day"
+      ? "X-axis: Entry slots (M/A/E/N) | Y-axis: Naughty level trend"
+      : aggregationUnit === "day"
+        ? "X-axis: Day | Y-axis: Naughty level trend"
+        : aggregationUnit === "week"
+          ? "X-axis: Week | Y-axis: Naughty level trend"
+          : "X-axis: Month | Y-axis: Naughty level trend"
+    : filter === "day"
       ? "X-axis: Mood entries (M/A/E/N) | Y-axis: Mood score"
       : aggregationUnit === "day"
         ? "X-axis: Day | Y-axis: Mood score"
@@ -512,7 +788,10 @@ export default function AnalyticsScreen() {
           ? "X-axis: Week | Y-axis: Mood score"
           : "X-axis: Month | Y-axis: Mood score";
 
-  const calendarCells = useMemo(() => getCalendarCells(trackerMonthDate), [trackerMonthDate]);
+  const calendarCells = useMemo(
+    () => getCalendarCells(trackerMonthDate),
+    [trackerMonthDate],
+  );
   const trackerMonthLabel = trackerMonthDate.toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
@@ -520,7 +799,11 @@ export default function AnalyticsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+      >
         {VIEW_OPTIONS.map((item) => {
           const active = item.key === viewMode;
           return (
@@ -529,7 +812,9 @@ export default function AnalyticsScreen() {
               style={[styles.chip, active && styles.chipActive]}
               onPress={() => setViewMode(item.key)}
             >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                {item.label}
+              </Text>
             </Pressable>
           );
         })}
@@ -537,7 +822,11 @@ export default function AnalyticsScreen() {
 
       {viewMode === "analytics" ? (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+          >
             {filters.map((item) => {
               const active = item.key === filter;
               return (
@@ -546,7 +835,11 @@ export default function AnalyticsScreen() {
                   style={[styles.chip, active && styles.chipActive]}
                   onPress={() => setFilter(item.key)}
                 >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+                  <Text
+                    style={[styles.chipText, active && styles.chipTextActive]}
+                  >
+                    {item.label}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -567,162 +860,390 @@ export default function AnalyticsScreen() {
 
           {filter === "custom" ? (
             <View style={styles.dateRow}>
-              <Pressable style={styles.dateBtn} onPress={() => setShowStartPicker(true)}>
-                <Text style={styles.dateBtnText}>Start: {customStartDate.toLocaleDateString()}</Text>
+              <Pressable
+                style={styles.dateBtn}
+                onPress={() => setShowStartPicker(true)}
+              >
+                <Text style={styles.dateBtnText}>
+                  Start: {customStartDate.toLocaleDateString()}
+                </Text>
               </Pressable>
-              <Pressable style={styles.dateBtn} onPress={() => setShowEndPicker(true)}>
-                <Text style={styles.dateBtnText}>End: {customEndDate.toLocaleDateString()}</Text>
+              <Pressable
+                style={styles.dateBtn}
+                onPress={() => setShowEndPicker(true)}
+              >
+                <Text style={styles.dateBtnText}>
+                  End: {customEndDate.toLocaleDateString()}
+                </Text>
               </Pressable>
             </View>
           ) : null}
           {showStartPicker ? (
-            <DateTimePicker value={customStartDate} mode="date" display={Platform.OS === "ios" ? "spinner" : "default"} onChange={onChangeCustomStart} />
+            <DateTimePicker
+              value={customStartDate}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              onChange={onChangeCustomStart}
+            />
           ) : null}
           {showEndPicker ? (
-            <DateTimePicker value={customEndDate} mode="date" display={Platform.OS === "ios" ? "spinner" : "default"} onChange={onChangeCustomEnd} />
+            <DateTimePicker
+              value={customEndDate}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              onChange={onChangeCustomEnd}
+            />
           ) : null}
 
           <Animated.View style={{ opacity: fadeAnim }}>
-            <LinearGradient colors={colors.cardGradientAlt} locations={[0, 0.5, 1]} start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }} style={styles.card}>
-              <Text style={styles.cardTitle}>Emotional Trend Graph</Text>
+            <LinearGradient
+              colors={colors.cardGradientAlt}
+              locations={[0, 0.5, 1]}
+              start={{ x: 1, y: 1 }}
+              end={{ x: 0, y: 0 }}
+              style={styles.card}
+            >
+              <Text style={styles.cardTitle}>
+                {isPrivateMode
+                  ? "Naughty Trend Graph"
+                  : "Emotional Trend Graph"}
+              </Text>
               <Text style={styles.hint}>{chartHint}</Text>
               {chartData ? (
                 <LineChart
-                  data={{ labels: chartData.labels, datasets: [{ data: chartData.values }] }}
+                  data={{
+                    labels: chartData.labels,
+                    datasets: chartData.datasets,
+                  }}
                   width={chartWidth}
                   height={220}
                   withDots
                   withShadow={false}
                   withInnerLines
+                  segments={4}
                   chartConfig={{
                     backgroundGradientFrom: colors.surface,
                     backgroundGradientTo: colors.surface,
                     color: (opacity = 1) => hexToRgba(colors.primary, opacity),
-                    labelColor: (opacity = 1) => hexToRgba(colors.textMuted, opacity),
+                    labelColor: (opacity = 1) =>
+                      hexToRgba(colors.textMuted, opacity),
                     decimalPlaces: 2,
-                    propsForDots: { r: "3", strokeWidth: "1", stroke: colors.primary },
+                    propsForDots: {
+                      r: "3",
+                      strokeWidth: "1",
+                      stroke: colors.primary,
+                    },
                   }}
                   style={styles.chart}
                 />
               ) : (
                 <View style={styles.emptyBox}>
-                  <Text style={styles.emptyText}>No emotional data for this filter yet.</Text>
+                  <Text style={styles.emptyText}>
+                    No emotional data for this filter yet.
+                  </Text>
                 </View>
               )}
             </LinearGradient>
             <View style={styles.metricRow}>
-              <LinearGradient colors={moodColors} locations={[0, 0.5, 1]} start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }} style={styles.metricCard}>
-                <Text style={styles.metricLabel}>Mood Score</Text>
-                <Text style={styles.metricValue}>{metrics.averageMoodPercent}%</Text>
+              <LinearGradient
+                colors={moodColors}
+                locations={[0, 0.5, 1]}
+                start={{ x: 1, y: 1 }}
+                end={{ x: 0, y: 0 }}
+                style={styles.metricCard}
+              >
+                <Text style={styles.metricLabel}>
+                  {isPrivateMode ? "Avg Level" : "Mood Score"}
+                </Text>
+                <Text style={styles.metricValue}>
+                  {isPrivateMode
+                    ? `${metrics.averageLevel.toFixed(1)}/5`
+                    : `${metrics.averageMoodPercent}%`}
+                </Text>
               </LinearGradient>
-              <LinearGradient colors={colors.sessionGradientIdle} start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }} style={styles.metricCard}>
+              <LinearGradient
+                colors={colors.sessionGradientIdle}
+                start={{ x: 1, y: 1 }}
+                end={{ x: 0, y: 0 }}
+                style={styles.metricCard}
+              >
                 <Text style={styles.metricLabel}>Entries</Text>
                 <Text style={styles.metricValue}>{filteredEntries.length}</Text>
               </LinearGradient>
             </View>
-            <LinearGradient colors={colors.cardGradientAlt} locations={[0, 0.5, 1]} start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }} style={styles.card}>
-              <Text style={styles.cardTitle}>Time Slot Pattern</Text>
+            <LinearGradient
+              colors={colors.cardGradientAlt}
+              locations={[0, 0.5, 1]}
+              start={{ x: 1, y: 1 }}
+              end={{ x: 0, y: 0 }}
+              style={styles.card}
+            >
+              <Text style={styles.cardTitle}>
+                {isPrivateMode ? "Hot Time Slots" : "Time Slot Pattern"}
+              </Text>
               <Text style={styles.hint}>
-                Best: {metrics.bestSlot.slot} ({scoreToPercent(metrics.bestSlot.average)}%) | Worst: {metrics.worstSlot.slot} ({scoreToPercent(metrics.worstSlot.average)}%)
+                {isPrivateMode ? "Hottest" : "Best"}: {metrics.bestSlot.slot} (
+                {scoreToPercent(metrics.bestSlot.average)}%) |{" "}
+                {isPrivateMode ? "Coolest" : "Worst"}: {metrics.worstSlot.slot}{" "}
+                ({scoreToPercent(metrics.worstSlot.average)}%)
               </Text>
               <View style={styles.slotGrid}>
                 {slotAverage.map((slot) => (
                   <View key={slot.slot} style={styles.slotCard}>
-                    <View style={[styles.slotDot, { backgroundColor: slotColor(slot.average) }]} />
+                    <View
+                      style={[
+                        styles.slotDot,
+                        {
+                          backgroundColor: slotColor(
+                            slot.average,
+                            isPrivateMode,
+                          ),
+                        },
+                      ]}
+                    />
                     <Text style={styles.slotName}>{slot.slot}</Text>
-                    <Text style={styles.slotValue}>{scoreLabel(slot.average)}</Text>
+                    <Text style={styles.slotValue}>
+                      {scoreLabel(slot.average, isPrivateMode)}
+                    </Text>
                   </View>
                 ))}
               </View>
             </LinearGradient>
-            <LinearGradient colors={colors.cardGradientAlt} locations={[0, 0.5, 1]} start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }} style={styles.card}>
-              <Text style={styles.cardTitle}>Advanced Mood Analytics</Text>
+            <LinearGradient
+              colors={colors.cardGradientAlt}
+              locations={[0, 0.5, 1]}
+              start={{ x: 1, y: 1 }}
+              end={{ x: 0, y: 0 }}
+              style={styles.card}
+            >
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardTitle}>
+                  {isPrivateMode
+                    ? "Advanced Naughty Analytics"
+                    : "Advanced Mood Analytics"}
+                </Text>
+                <Pressable
+                  style={styles.infoButton}
+                  onPress={() => setFaqModalVisible(true)}
+                >
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={18}
+                    color={colors.primary}
+                  />
+                </Pressable>
+              </View>
               <View style={styles.analyticsGrid}>
-                <View style={styles.analyticsItem}><Text style={styles.analyticsLabel}>Stability</Text><Text style={styles.analyticsValue}>{stability}%</Text></View>
-                <View style={styles.analyticsItem}><Text style={styles.analyticsLabel}>Variability</Text><Text style={styles.analyticsValue}>{metrics.variability}%</Text></View>
-                <View style={styles.analyticsItem}><Text style={styles.analyticsLabel}>Trend</Text><Text style={styles.analyticsValue}>{metrics.trend > 0 ? "+" : ""}{metrics.trend.toFixed(2)}</Text></View>
-                <View style={styles.analyticsItem}><Text style={styles.analyticsLabel}>Peak</Text><Text style={styles.analyticsValue}>{metrics.peakIntensity.toFixed(2)}</Text></View>
-                <View style={styles.analyticsItem}><Text style={styles.analyticsLabel}>Balance</Text><Text style={styles.analyticsValue}>{metrics.balance}%</Text></View>
-                <View style={styles.analyticsItem}><Text style={styles.analyticsLabel}>Momentum</Text><Text style={styles.analyticsValue}>{metrics.momentum > 0 ? "+" : ""}{metrics.momentum.toFixed(2)}</Text></View>
+                <View style={styles.analyticsItem}>
+                  <Text style={styles.analyticsLabel}>
+                    {isPrivateMode ? "Arousal Stability" : "Stability"}
+                  </Text>
+                  <Text style={styles.analyticsValue}>{stability}%</Text>
+                </View>
+                <View style={styles.analyticsItem}>
+                  <Text style={styles.analyticsLabel}>
+                    {isPrivateMode ? "Arousal Swing" : "Variability"}
+                  </Text>
+                  <Text style={styles.analyticsValue}>
+                    {metrics.variability}%
+                  </Text>
+                </View>
+                <View style={styles.analyticsItem}>
+                  <Text style={styles.analyticsLabel}>
+                    {isPrivateMode ? "Desire Trend" : "Trend"}
+                  </Text>
+                  <Text style={styles.analyticsValue}>
+                    {metrics.trend > 0 ? "+" : ""}
+                    {metrics.trend.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.analyticsItem}>
+                  <Text style={styles.analyticsLabel}>
+                    {isPrivateMode ? "Peak Level" : "Peak"}
+                  </Text>
+                  <Text style={styles.analyticsValue}>
+                    {isPrivateMode
+                      ? `${metrics.peakIntensity.toFixed(1)}/5`
+                      : metrics.peakIntensity.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.analyticsItem}>
+                  <Text style={styles.analyticsLabel}>
+                    {isPrivateMode ? "Charged Ratio" : "Balance"}
+                  </Text>
+                  <Text style={styles.analyticsValue}>{metrics.balance}%</Text>
+                </View>
+                <View style={styles.analyticsItem}>
+                  <Text style={styles.analyticsLabel}>
+                    {isPrivateMode ? "Recent Heat" : "Momentum"}
+                  </Text>
+                  <Text style={styles.analyticsValue}>
+                    {metrics.momentum > 0 ? "+" : ""}
+                    {metrics.momentum.toFixed(2)}
+                  </Text>
+                </View>
               </View>
             </LinearGradient>
           </Animated.View>
         </>
       ) : (
         <Animated.View style={{ opacity: fadeAnim }}>
-          <LinearGradient colors={colors.cardGradientAlt} locations={[0, 0.5, 1]} start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }} style={styles.card}>
+          <LinearGradient
+            colors={colors.cardGradientAlt}
+            locations={[0, 0.5, 1]}
+            start={{ x: 1, y: 1 }}
+            end={{ x: 0, y: 0 }}
+            style={styles.card}
+          >
             <Text style={styles.cardTitle}>{activityTitle}</Text>
             <Text style={styles.hint}>{activityDescription}</Text>
             <View style={styles.metricRow}>
-              <View style={styles.summaryCard}><Text style={styles.metricLabel}>Current Streak</Text><Text style={styles.metricValue}>{trackerStreak}</Text></View>
-              <View style={styles.summaryCard}><Text style={styles.metricLabel}>Month Logs</Text><Text style={styles.metricValue}>{monthEntries.length}</Text></View>
-              <View style={styles.summaryCard}><Text style={styles.metricLabel}>Month Avg</Text><Text style={styles.metricValue}>{trackerAverage.toFixed(1)}</Text></View>
+              <View style={styles.summaryCard}>
+                <Text style={styles.metricLabel}>Current Streak</Text>
+                <Text style={styles.metricValue}>{trackerStreak}</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Text style={styles.metricLabel}>Month Logs</Text>
+                <Text style={styles.metricValue}>{monthEntries.length}</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Text style={styles.metricLabel}>Month Avg</Text>
+                <Text style={styles.metricValue}>
+                  {trackerAverage.toFixed(1)}
+                </Text>
+              </View>
             </View>
             <View style={styles.legendRow}>
               {activityLevels.map((level) => (
-                <View key={level.value} style={[styles.legendDot, { backgroundColor: level.color }]}>
-                  <Text style={[styles.legendText, { color: level.textColor }]}>{level.value}</Text>
+                <View
+                  key={level.value}
+                  style={[styles.legendDot, { backgroundColor: level.color }]}
+                >
+                  <Text style={[styles.legendText, { color: level.textColor }]}>
+                    {level.value}
+                  </Text>
                 </View>
               ))}
             </View>
             <View style={styles.navRow}>
-              <Pressable style={styles.navBtn} onPress={() => setTrackerMonthDate((prev) => shiftMonth(prev, -1))}>
+              <Pressable
+                style={styles.navBtn}
+                onPress={() =>
+                  setTrackerMonthDate((prev) => shiftMonth(prev, -1))
+                }
+              >
                 <Text style={styles.navBtnText}>Prev Month</Text>
               </Pressable>
               <Text style={styles.navLabel}>{trackerMonthLabel}</Text>
-              <Pressable style={styles.navBtn} onPress={() => setTrackerMonthDate((prev) => shiftMonth(prev, 1))}>
+              <Pressable
+                style={styles.navBtn}
+                onPress={() =>
+                  setTrackerMonthDate((prev) => shiftMonth(prev, 1))
+                }
+              >
                 <Text style={styles.navBtnText}>Next Month</Text>
               </Pressable>
             </View>
             <View style={styles.editorCard}>
               <Text style={styles.cardTitle}>{activityLabel} Log</Text>
-              <Text style={styles.hint}>{formatLongDate(selectedTrackerDateKey)}</Text>
+              <Text style={styles.hint}>
+                {formatLongDate(selectedTrackerDateKey)}
+              </Text>
               <View style={styles.dateRow}>
-                <Pressable style={styles.dateBtn} onPress={() => setShowTrackerDatePicker(true)}>
+                <Pressable
+                  style={styles.dateBtn}
+                  onPress={() => setShowTrackerDatePicker(true)}
+                >
                   <Text style={styles.dateBtnText}>Choose Date</Text>
                 </Pressable>
-                <Pressable style={[styles.levelBtn, { backgroundColor: trackerLevel.color, borderColor: trackerLevel.color }]} onPress={() => setScoreMenuVisible(true)}>
-                  <Text style={[styles.levelBtnText, { color: trackerLevel.textColor }]}>{trackerLevel.label}</Text>
+                <Pressable
+                  style={[
+                    styles.levelBtn,
+                    {
+                      backgroundColor: trackerLevel.color,
+                      borderColor: trackerLevel.color,
+                    },
+                  ]}
+                  onPress={() => setScoreMenuVisible(true)}
+                >
+                  <Text
+                    style={[
+                      styles.levelBtnText,
+                      { color: trackerLevel.textColor },
+                    ]}
+                  >
+                    {trackerLevel.label}
+                  </Text>
                 </Pressable>
               </View>
               <Text style={styles.hint}>{trackerLevel.subtitle}</Text>
               <View style={styles.dateRow}>
-                <Pressable style={styles.secondaryBtn} onPress={onClearTrackerScore}>
+                <Pressable
+                  style={styles.secondaryBtn}
+                  onPress={onClearTrackerScore}
+                >
                   <Text style={styles.secondaryBtnText}>Clear</Text>
                 </Pressable>
-                <Pressable style={styles.primaryBtn} onPress={onSaveTrackerScore}>
-                  <Text style={styles.primaryBtnText}>{selectedTrackerEntry ? "Update Log" : "Save Log"}</Text>
+                <Pressable
+                  style={styles.primaryBtn}
+                  onPress={onSaveTrackerScore}
+                >
+                  <Text style={styles.primaryBtnText}>
+                    {selectedTrackerEntry ? "Update Log" : "Save Log"}
+                  </Text>
                 </Pressable>
               </View>
             </View>
             {showTrackerDatePicker ? (
-              <DateTimePicker value={trackerDate} mode="date" display={Platform.OS === "ios" ? "spinner" : "default"} onChange={onChangeTrackerDate} />
+              <DateTimePicker
+                value={trackerDate}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={onChangeTrackerDate}
+              />
             ) : null}
           </LinearGradient>
           <View style={styles.calendarCard}>
             <View style={styles.weekdayRow}>
               {CALENDAR_WEEKDAYS.map((day) => (
-                <Text key={day} style={styles.weekdayText}>{day}</Text>
+                <Text key={day} style={styles.weekdayText}>
+                  {day}
+                </Text>
               ))}
             </View>
             <View style={styles.calendarGrid}>
               {calendarCells.map((cell, index) => {
-                if (!cell) return <View key={`blank-${index}`} style={styles.calendarBlank} />;
+                if (!cell)
+                  return (
+                    <View key={`blank-${index}`} style={styles.calendarBlank} />
+                  );
                 const dateKey = toDateKey(cell);
                 const savedScore = Number(activityMap[dateKey]?.score || 0);
-                const level = activityLevels.find((item) => item.value === savedScore) || activityLevels[0];
+                const level =
+                  activityLevels.find((item) => item.value === savedScore) ||
+                  activityLevels[0];
                 const isSelected = dateKey === selectedTrackerDateKey;
                 return (
                   <Pressable
                     key={dateKey}
-                    style={[styles.calendarCell, { backgroundColor: level.color, borderColor: isSelected ? colors.text : level.color }]}
+                    style={[
+                      styles.calendarCell,
+                      {
+                        backgroundColor: level.color,
+                        borderColor: isSelected ? colors.text : level.color,
+                      },
+                    ]}
                     onPress={() => {
                       setTrackerDate(cell);
                       setTrackerMonthDate(startOfMonth(cell));
                       setTrackerScore(savedScore);
                     }}
                   >
-                    <Text style={[styles.calendarDay, { color: level.textColor }]}>{cell.getDate()}</Text>
+                    <Text
+                      style={[styles.calendarDay, { color: level.textColor }]}
+                    >
+                      {cell.getDate()}
+                    </Text>
                   </Pressable>
                 );
               })}
@@ -731,26 +1252,84 @@ export default function AnalyticsScreen() {
         </Animated.View>
       )}
 
-      <Modal transparent visible={scoreMenuVisible} animationType="fade" onRequestClose={() => setScoreMenuVisible(false)}>
+      <Modal
+        transparent
+        visible={scoreMenuVisible}
+        animationType="fade"
+        onRequestClose={() => setScoreMenuVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.cardTitle}>Select {activityLabel} Level</Text>
             {activityLevels.map((level) => (
               <Pressable
                 key={level.value}
-                style={[styles.scoreOption, { backgroundColor: level.color, borderColor: trackerScore === level.value ? colors.text : level.color }]}
+                style={[
+                  styles.scoreOption,
+                  {
+                    backgroundColor: level.color,
+                    borderColor:
+                      trackerScore === level.value ? colors.text : level.color,
+                  },
+                ]}
                 onPress={() => {
                   setTrackerScore(level.value);
                   setScoreMenuVisible(false);
                 }}
               >
-                <Text style={[styles.scoreOptionTitle, { color: level.textColor }]}>{level.label}</Text>
-                <Text style={[styles.scoreOptionSubtitle, { color: level.textColor }]}>{level.subtitle}</Text>
+                <Text
+                  style={[styles.scoreOptionTitle, { color: level.textColor }]}
+                >
+                  {level.label}
+                </Text>
+                <Text
+                  style={[
+                    styles.scoreOptionSubtitle,
+                    { color: level.textColor },
+                  ]}
+                >
+                  {level.subtitle}
+                </Text>
               </Pressable>
             ))}
-            <Pressable style={styles.primaryBtn} onPress={() => setScoreMenuVisible(false)}>
+            <Pressable
+              style={styles.primaryBtn}
+              onPress={() => setScoreMenuVisible(false)}
+            >
               <Text style={styles.primaryBtnText}>Done</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={faqModalVisible}
+        animationType="fade"
+        onRequestClose={() => setFaqModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.faqModalCard}>
+            <View style={styles.faqHeaderRow}>
+              <Text style={styles.cardTitle}>
+                {isPrivateMode
+                  ? "Private Analytics FAQ"
+                  : "Public Analytics FAQ"}
+              </Text>
+              <Pressable onPress={() => setFaqModalVisible(false)}>
+                <Ionicons name="close" size={20} color={colors.text} />
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {scoreFaq.map((item) => (
+                <View key={item.key} style={styles.faqItem}>
+                  <Text style={styles.faqTitle}>{item.title}</Text>
+                  <Text style={styles.faqDescription}>
+                    {item.description || " "}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -793,7 +1372,12 @@ const createStyles = (colors) =>
       paddingHorizontal: 12,
     },
     navBtnText: { color: colors.text, fontWeight: "700", fontSize: 12 },
-    navLabel: { color: colors.text, fontWeight: "700", fontSize: 12, flexShrink: 1 },
+    navLabel: {
+      color: colors.text,
+      fontWeight: "700",
+      fontSize: 12,
+      flexShrink: 1,
+    },
     todayBtn: {
       borderWidth: 1,
       borderColor: colors.inputAccentBorder,
@@ -822,7 +1406,28 @@ const createStyles = (colors) =>
       padding: 14,
       marginBottom: 12,
     },
-    cardTitle: { color: colors.text, fontWeight: "800", fontSize: 16, marginBottom: 6 },
+    cardTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 6,
+    },
+    cardTitle: {
+      color: colors.text,
+      fontWeight: "800",
+      fontSize: 16,
+      marginBottom: 6,
+    },
+    infoButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.inputSurface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
     hint: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
     chart: { borderRadius: 12, marginTop: 10 },
     emptyBox: {
@@ -854,7 +1459,12 @@ const createStyles = (colors) =>
       backgroundColor: colors.inputSurface,
     },
     metricLabel: { color: colors.textMuted, fontWeight: "600", fontSize: 12 },
-    metricValue: { marginTop: 4, fontSize: 22, fontWeight: "800", color: colors.text },
+    metricValue: {
+      marginTop: 4,
+      fontSize: 22,
+      fontWeight: "800",
+      color: colors.text,
+    },
     slotGrid: { flexDirection: "row", gap: 8 },
     slotCard: {
       flex: 1,
@@ -866,7 +1476,11 @@ const createStyles = (colors) =>
       backgroundColor: colors.inputSurface,
     },
     slotDot: { width: 14, height: 14, borderRadius: 999, marginBottom: 6 },
-    slotName: { color: colors.text, fontWeight: "700", textTransform: "capitalize" },
+    slotName: {
+      color: colors.text,
+      fontWeight: "700",
+      textTransform: "capitalize",
+    },
     slotValue: { color: colors.textMuted, marginTop: 2, fontSize: 12 },
     analyticsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     analyticsItem: {
@@ -878,9 +1492,23 @@ const createStyles = (colors) =>
       paddingVertical: 10,
       paddingHorizontal: 10,
     },
-    analyticsLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
-    analyticsValue: { marginTop: 4, color: colors.text, fontSize: 18, fontWeight: "800" },
-    legendRow: { flexDirection: "row", gap: 8, marginVertical: 10, flexWrap: "wrap" },
+    analyticsLabel: {
+      color: colors.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    analyticsValue: {
+      marginTop: 4,
+      color: colors.text,
+      fontSize: 18,
+      fontWeight: "800",
+    },
+    legendRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginVertical: 10,
+      flexWrap: "wrap",
+    },
     legendDot: {
       width: 32,
       height: 32,
@@ -936,8 +1564,18 @@ const createStyles = (colors) =>
       backgroundColor: colors.surface,
       padding: 12,
     },
-    weekdayRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-    weekdayText: { width: `${100 / 7}%`, textAlign: "center", color: colors.textMuted, fontWeight: "700", fontSize: 11 },
+    weekdayRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+    weekdayText: {
+      width: `${100 / 7}%`,
+      textAlign: "center",
+      color: colors.textMuted,
+      fontWeight: "700",
+      fontSize: 11,
+    },
     calendarGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     calendarBlank: { width: `${(100 - 36) / 7}%`, aspectRatio: 1 },
     calendarCell: {
@@ -963,6 +1601,40 @@ const createStyles = (colors) =>
       borderColor: colors.border,
       backgroundColor: colors.surface,
       padding: 14,
+    },
+    faqModalCard: {
+      width: "100%",
+      maxWidth: 420,
+      maxHeight: "78%",
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 16,
+    },
+    faqHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    faqItem: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.inputSurface,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 10,
+    },
+    faqTitle: {
+      color: colors.text,
+      fontWeight: "800",
+      marginBottom: 4,
+    },
+    faqDescription: {
+      color: colors.textMuted,
+      lineHeight: 18,
+      minHeight: 18,
     },
     scoreOption: {
       borderWidth: 2,

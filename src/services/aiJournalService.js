@@ -323,25 +323,74 @@ export async function analyzeJournalEntryWithContext(entryText, options = {}) {
 }
 
 export async function extractPeopleNames(text, options = {}) {
-  if (!String(text).trim()) return [];
+  const wantsDetailed = Boolean(options?.detailed);
+  const emptyResult = wantsDetailed
+    ? {
+        names: [],
+        provider: "none",
+        usedFallback: false,
+        reason: "empty_input",
+        puterNotConnected: false,
+        providerFailed: false,
+      }
+    : [];
+  if (!String(text).trim()) return emptyResult;
 
   try {
     const journalMode =
       options?.journalMode ||
       (options?.mode === "private" ? "private" : null) ||
       (await getActiveCharacterMode());
-    const content = await modelChat({
-      systemPrompt: getCircleNameExtractionPrompt(journalMode),
-      userPrompt: buildNameExtractionUserPrompt(text),
-      temperature: 0,
-    }, journalMode);
+    const provider = journalMode === "private" ? "grok" : "gemini";
+    const content = await modelChat(
+      {
+        systemPrompt: getCircleNameExtractionPrompt(journalMode),
+        userPrompt: buildNameExtractionUserPrompt(text),
+        temperature: 0,
+      },
+      journalMode,
+    );
 
     const parsed = safeJsonParse(content);
     const normalized = validateNameExtractionPayload(parsed);
-    if (normalized) return normalized;
+    if (normalized) {
+      return wantsDetailed
+        ? {
+            names: normalized,
+            provider,
+            usedFallback: false,
+            reason: normalized.length ? "ok" : "no_names_found",
+            puterNotConnected: false,
+            providerFailed: false,
+          }
+        : normalized;
+    }
 
-    return fallbackExtractNames(text);
-  } catch {
-    return fallbackExtractNames(text);
+    const fallback = fallbackExtractNames(text);
+    return wantsDetailed
+      ? {
+          names: fallback,
+          provider,
+          usedFallback: true,
+          reason: fallback.length ? "invalid_ai_response" : "no_names_found",
+          puterNotConnected: false,
+          providerFailed: true,
+        }
+      : fallback;
+  } catch (error) {
+    const fallback = fallbackExtractNames(text);
+    const message = String(error?.message || "");
+    const puterNotConnected =
+      /puter|popup blocked|auth token|sign-in|web environment/i.test(message);
+    return wantsDetailed
+      ? {
+          names: fallback,
+          provider: options?.journalMode === "private" ? "grok" : "gemini",
+          usedFallback: true,
+          reason: fallback.length ? "provider_failed_fallback" : "no_names_found",
+          puterNotConnected,
+          providerFailed: true,
+        }
+      : fallback;
   }
 }

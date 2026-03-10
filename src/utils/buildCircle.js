@@ -87,16 +87,32 @@ export async function buildCircle(entries, options = {}) {
   const journalMode = options.journalMode === 'private' ? 'private' : 'public';
 
   const map = new Map();
+  const extractionMeta = {
+    provider: journalMode === 'private' ? 'grok' : 'gemini',
+    totalEntries: 0,
+    entriesWithNoNames: 0,
+    fallbackCount: 0,
+    providerFailed: false,
+    puterNotConnected: false,
+    lastMessage: '',
+  };
 
   for (const entry of entries || []) {
     const text = String(entry?.text || '').trim();
     if (!text) continue;
+    extractionMeta.totalEntries += 1;
 
-    const extracted = await extractor(text, { journalMode });
-    const extractedNames = [...new Set((extracted || []).map(normalizeName).filter(Boolean))];
+    const extractedResult = await extractor(text, { journalMode, detailed: true });
+    const extractedNames = [...new Set(((extractedResult?.names) || []).map(normalizeName).filter(Boolean))];
+    if (extractedResult?.usedFallback) extractionMeta.fallbackCount += 1;
+    if (extractedResult?.providerFailed) extractionMeta.providerFailed = true;
+    if (extractedResult?.puterNotConnected) extractionMeta.puterNotConnected = true;
     const relationNames = extractRelationMentions(text);
     const names = [...new Set([...extractedNames, ...relationNames])];
-    if (!names.length) continue;
+    if (!names.length) {
+      extractionMeta.entriesWithNoNames += 1;
+      continue;
+    }
 
     const moodValue = toMoodScore(entry?.mood ?? entry?.sentimentScore);
     const mentionDate = entry?.date || new Date().toISOString();
@@ -161,5 +177,6 @@ export async function buildCircle(entries, options = {}) {
     people,
     positiveEnergy: people.filter((person) => person.avgMood >= 0.2),
     stressCorrelated: people.filter((person) => person.avgMood <= -0.2),
+    extractionMeta,
   };
 }

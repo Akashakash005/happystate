@@ -35,7 +35,7 @@ function moodCorrelationColor(avgMood, colors) {
 }
 
 export default function CircleScreen() {
-  const { colors } = useTheme();
+  const { colors, isPrivateMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -62,10 +62,14 @@ export default function CircleScreen() {
   const analyzeConnections = async () => {
     setLoading(true);
     setError("");
+    console.log("[Circle] Analyze My Connections clicked", {
+      mode: isPrivateMode ? "private" : "public",
+    });
 
     try {
       const quotaBefore = getGeminiQuotaState();
       const analysis = await refreshCircleState();
+      console.log("[Circle] Analysis finished", analysis?.extractionMeta || {});
       setResult(analysis);
       const quotaAfter = getGeminiQuotaState();
       if (quotaAfter.active && (!quotaBefore.active || quotaAfter.message !== quotaBefore.message)) {
@@ -191,6 +195,21 @@ export default function CircleScreen() {
 
       {result ? (
         <View style={styles.resultsWrap}>
+          {result.extractionMeta?.puterNotConnected ? (
+            <View style={styles.statusCard}>
+              <Text style={styles.statusText}>Puter not connected</Text>
+            </View>
+          ) : null}
+          {result.extractionMeta?.providerFailed ? (
+            <View style={styles.statusCard}>
+              <Text style={styles.statusText}>AI provider failed, used fallback extraction</Text>
+            </View>
+          ) : null}
+          {result.extractionMeta?.entriesWithNoNames > 0 ? (
+            <View style={styles.statusCard}>
+              <Text style={styles.statusText}>No names found</Text>
+            </View>
+          ) : null}
           <Text style={styles.resultsTitle}>
             {viewMode === "summary" ? "Interaction Pattern Cards" : "Name | Other Names"}
           </Text>
@@ -442,6 +461,18 @@ const createStyles = (colors) => StyleSheet.create({
   analyzeButtonText: { color: colors.surface, fontWeight: "800", fontSize: 16 },
   loadingWrap: { marginTop: 10, alignItems: "center" },
   errorText: { marginTop: 10, color: colors.danger, fontWeight: "600" },
+  statusCard: {
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: colors.inputSurface,
+  },
+  statusText: {
+    color: colors.text,
+    fontWeight: "700",
+  },
   resultsWrap: { marginTop: 18 },
   resultsTitle: {
     fontSize: 20,

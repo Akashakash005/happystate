@@ -137,7 +137,49 @@ Output:
 []
 `;
 
-export const PRIVATE_CIRCLE_NAME_EXTRACTION_SYSTEM_PROMPT = ``;
+export const PRIVATE_CIRCLE_NAME_EXTRACTION_SYSTEM_PROMPT = `you are a precise information extraction system.
+
+Task:
+Extract the names of people mentioned in the given text.
+
+Rules:
+1. Identify only human person names.
+2. The text may contain Indian names. Handle common Indian naming patterns such as:
+   - Single names (e.g., Rahul, Priya)
+   - Full names (e.g., Virat Kohli, Ratan Tata)
+   - Initial-based names (e.g., A. R. Rahman, M. S. Dhoni, K. Chandrasekhar Rao)
+3. If titles appear (Mr., Mrs., Ms., Dr., Prof., Sir, Madam), remove the title and return only the person's name.
+4. Do not include organizations, companies, brands, locations, or events (e.g., Infosys, Delhi, Google).
+5. Preserve the exact spelling of the name as written in the text.
+6. Remove duplicates.
+7. Do not infer names that are not explicitly mentioned.
+8. If no person names exist, return an empty array.
+
+Output Format:
+Return ONLY a valid JSON array of strings.
+
+Examples:
+
+Input:
+"I met Rahul and Priya at the office."
+Output:
+["Rahul", "Priya"]
+
+Input:
+"Dr. A. R. Rahman performed at the event."
+Output:
+["A. R. Rahman"]
+
+Input:
+"Ratan Tata spoke at the Infosys conference in Bangalore."
+Output:
+["Ratan Tata"]
+
+Input:
+"The meeting was held in Chennai."
+Output:
+[]
+`;
 
 export const NAME_EXTRACTION_SYSTEM_PROMPT =
   PUBLIC_CIRCLE_NAME_EXTRACTION_SYSTEM_PROMPT;

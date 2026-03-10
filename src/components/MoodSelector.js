@@ -1,15 +1,16 @@
 import React, { useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { MOOD_OPTIONS } from '../constants/moods';
+import { getMoodOptions } from '../constants/moods';
 import { useTheme } from '../context/ThemeContext';
 
 export default function MoodSelector({ value, onChange }) {
-  const { colors } = useTheme();
+  const { colors, isPrivateMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const moodOptions = useMemo(() => getMoodOptions(isPrivateMode), [isPrivateMode]);
 
   return (
     <View style={styles.row}>
-      {MOOD_OPTIONS.map((mood) => {
+      {moodOptions.map((mood) => {
         const selected = mood.value === value;
         return (
           <Pressable

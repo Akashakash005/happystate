@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -76,7 +76,9 @@ export default function JournalChatScreen() {
   const isNearBottomRef = useRef(true);
 
   useEffect(() => {
-    setSuggestedPrompts(isPrivateMode ? PRIVATE_SUGGESTIONS : DEFAULT_SUGGESTIONS);
+    setSuggestedPrompts(
+      isPrivateMode ? PRIVATE_SUGGESTIONS : DEFAULT_SUGGESTIONS,
+    );
   }, [isPrivateMode]);
 
   useLayoutEffect(() => {
@@ -284,7 +286,9 @@ export default function JournalChatScreen() {
     const updated = await getJournalSessions(journalMode);
     setSessions(updated);
     setActiveSessionId(session.id);
-    setSuggestedPrompts(isPrivateMode ? PRIVATE_SUGGESTIONS : DEFAULT_SUGGESTIONS);
+    setSuggestedPrompts(
+      isPrivateMode ? PRIVATE_SUGGESTIONS : DEFAULT_SUGGESTIONS,
+    );
     setHistoryOpen(false);
   };
 
@@ -381,7 +385,8 @@ export default function JournalChatScreen() {
         <View style={styles.puterGate}>
           <Text style={styles.puterGateTitle}>Private Journal Locked</Text>
           <Text style={styles.puterGateText}>
-            Sign in with Puter first. After that, this browser session can use Grok inside private mode.
+            Sign in with Puter first. After that, this browser session can use
+            Grok inside private mode.
           </Text>
           <Pressable
             style={[
@@ -478,7 +483,9 @@ export default function JournalChatScreen() {
                 <View style={styles.typingDot} />
                 <View style={styles.typingDot} />
               </View>
-              <Text style={styles.loadingLabel}>{`Assistant is typing${typingDots}`}</Text>
+              <Text
+                style={styles.loadingLabel}
+              >{`Assistant is typing${typingDots}`}</Text>
             </View>
           ) : null}
         </ScrollView>
@@ -489,24 +496,7 @@ export default function JournalChatScreen() {
           styles.promptSection,
           { bottom: composerBottomOffset + composerHeight + 8 },
         ]}
-      >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.promptRow}
-          keyboardShouldPersistTaps="handled"
-        >
-          {suggestedPrompts.map((prompt) => (
-            <Pressable
-              key={prompt}
-              style={styles.promptChip}
-              onPress={() => submitText(prompt)}
-            >
-              <Text style={styles.promptChipText}>{prompt}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
+      ></View>
 
       <View
         style={[styles.composerBar, { bottom: composerBottomOffset }]}
@@ -524,7 +514,9 @@ export default function JournalChatScreen() {
         <TextInput
           value={draft}
           onChangeText={setDraft}
-          placeholder={isPrivateMode ? "Drop the unfiltered truth" : "Ask anything"}
+          placeholder={
+            isPrivateMode ? "Drop the unfiltered truth" : "Ask anything"
+          }
           placeholderTextColor={colors.textMuted}
           style={styles.input}
           multiline
@@ -639,7 +631,9 @@ export default function JournalChatScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.quotaModalCard}>
             <LinearGradient
-              colors={isPrivateMode ? colors.cardGradient : colors.cardGradientAlt}
+              colors={
+                isPrivateMode ? colors.cardGradient : colors.cardGradientAlt
+              }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.quotaModalGlow}

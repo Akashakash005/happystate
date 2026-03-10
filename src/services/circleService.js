@@ -70,6 +70,18 @@ function normalizeCircleState(data = {}) {
     people,
     positiveEnergy: Array.isArray(data?.positiveEnergy) ? data.positiveEnergy : [],
     stressCorrelated: Array.isArray(data?.stressCorrelated) ? data.stressCorrelated : [],
+    extractionMeta:
+      data?.extractionMeta && typeof data.extractionMeta === "object"
+        ? {
+            provider: String(data.extractionMeta.provider || ""),
+            totalEntries: Number(data.extractionMeta.totalEntries || 0),
+            entriesWithNoNames: Number(data.extractionMeta.entriesWithNoNames || 0),
+            fallbackCount: Number(data.extractionMeta.fallbackCount || 0),
+            providerFailed: Boolean(data.extractionMeta.providerFailed),
+            puterNotConnected: Boolean(data.extractionMeta.puterNotConnected),
+            lastMessage: String(data.extractionMeta.lastMessage || ""),
+          }
+        : null,
     manualEdits: normalizeManualEdits(data?.manualEdits),
     updatedAt: data?.updatedAt || null,
   };
@@ -93,6 +105,7 @@ function applyManualEdits(circleState) {
     people,
     positiveEnergy: people.filter((person) => person.avgMood >= 0.2).map((person) => person.person),
     stressCorrelated: people.filter((person) => person.avgMood <= -0.2).map((person) => person.person),
+    extractionMeta: circleState?.extractionMeta || null,
     manualEdits,
   };
 }
@@ -165,6 +178,7 @@ export async function refreshCircleState({ journalEntries = null, mode = null } 
     stressCorrelated: Array.isArray(analysis?.stressCorrelated)
       ? analysis.stressCorrelated.map((person) => person.person)
       : [],
+    extractionMeta: analysis?.extractionMeta || null,
     manualEdits: current.manualEdits || {},
     updatedAt: new Date().toISOString(),
   };
