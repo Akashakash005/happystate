@@ -106,8 +106,17 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const errorText = await response.text();
+      const upstreamHeaders = Object.fromEntries(response.headers.entries());
       res.status(response.status).json({
-        error: errorText || "Puter drivers/call request failed.",
+        error: "Puter drivers/call request failed.",
+        provider: "puter",
+        model,
+        tokenPresent: Boolean(authToken),
+        messageCount: messages.length,
+        upstreamStatus: response.status,
+        upstreamStatusText: response.statusText,
+        upstreamBody: errorText || null,
+        upstreamHeaders,
       });
       return;
     }
@@ -117,6 +126,8 @@ export default async function handler(req, res) {
   } catch (error) {
     res.status(500).json({
       error: error?.message || "Backend grok-chat request failed.",
+      provider: "puter",
+      tokenPresent: Boolean(authToken),
     });
   }
 }
