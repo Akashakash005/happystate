@@ -198,6 +198,47 @@ async function grokChatViaPuter({ systemPrompt, userPrompt }) {
   });
 }
 
+export async function buildJournalModelPrompt(entryText, options = {}) {
+  const history = Array.isArray(options.history) ? options.history : [];
+  const journalMode = options.journalMode === "private" ? "private" : "public";
+  let context = {};
+
+  try {
+    context = await buildJournalContext({ history });
+  } catch {
+    context = {};
+  }
+
+  const systemPrompt =
+    journalMode === "private"
+      ? GROK_JOURNAL_ANALYSIS_SYSTEM_PROMPT
+      : JOURNAL_ANALYSIS_SYSTEM_PROMPT;
+  const userPrompt = buildJournalUserPrompt({ entryText, history, context });
+
+  return {
+    systemPrompt,
+    userPrompt,
+    fullPrompt: `${systemPrompt}\n\n${userPrompt}\n\nReturn strict JSON only.`,
+  };
+}
+
+export function parseJournalAnalysisResponse(content, options = {}) {
+  const entryText = String(options.entryText || "");
+  const journalMode = options.journalMode === "private" ? "private" : "public";
+  const parsed = safeJsonParse(content);
+  const normalized = validateJournalAnalysisPayload(parsed);
+
+  if (normalized) {
+    return normalized;
+  }
+
+  if (journalMode === "private") {
+    throw new Error("Private journal returned an invalid Grok response.");
+  }
+
+  return fallbackAnalysis(entryText);
+}
+
 async function modelChat(params, journalMode = "public") {
   if (journalMode === "private") {
     return grokChatViaPuter(params);
@@ -287,33 +328,22 @@ export async function analyzeJournalEntryWithContext(entryText, options = {}) {
   const journalMode = options.journalMode === "private" ? "private" : "public";
 
   try {
-    let context = {};
-    try {
-      context = await buildJournalContext({ history });
-    } catch {
-      context = {};
-    }
+    const promptPayload = await buildJournalModelPrompt(entryText, {
+      history,
+      journalMode,
+    });
     const content = await modelChat(
       {
-        systemPrompt:
-          journalMode === "private"
-            ? GROK_JOURNAL_ANALYSIS_SYSTEM_PROMPT
-            : JOURNAL_ANALYSIS_SYSTEM_PROMPT,
-        userPrompt: buildJournalUserPrompt({ entryText, history, context }),
+        systemPrompt: promptPayload.systemPrompt,
+        userPrompt: promptPayload.userPrompt,
         temperature: 0.25,
       },
       journalMode,
     );
-    const parsed = safeJsonParse(content);
-    const normalized = validateJournalAnalysisPayload(parsed);
-    if (!normalized) {
-      if (journalMode === "private") {
-        throw new Error("Private journal returned an invalid Grok response.");
-      }
-      return fallbackAnalysis(entryText);
-    }
-
-    return normalized;
+    return parseJournalAnalysisResponse(content, {
+      entryText,
+      journalMode,
+    });
   } catch (error) {
     if (journalMode === "private") {
       throw error;

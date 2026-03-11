@@ -1,14 +1,22 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 
 const PUTER_API_ORIGIN = "https://api.puter.com";
 const DEFAULT_MODEL = "grok-4-fast";
 const TOKEN_KEY = "happy_state_puter_auth_token";
 const USER_KEY = "happy_state_puter_user";
+const NATIVE_TOKEN_KEY = "@happy_state_puter_native_auth_token";
 const POPUP_NAME = "HappyStatePuterAuth";
 const BACKEND_URL = String(process.env.EXPO_PUBLIC_AI_BACKEND_URL || "").trim();
 
 function isBrowserEnv() {
   return Platform.OS === "web" && typeof window !== "undefined";
+}
+
+function isNativeMobileEnv() {
+  return Platform.OS === "ios" || Platform.OS === "android";
 }
 
 function getBackendChatUrl() {
@@ -40,6 +48,33 @@ function clearStoredAuth() {
   try {
     window.sessionStorage.removeItem(TOKEN_KEY);
     window.sessionStorage.removeItem(USER_KEY);
+  } catch {
+    // Best effort only.
+  }
+}
+
+async function getNativeStoredToken() {
+  if (!isNativeMobileEnv()) return "";
+  try {
+    return String((await AsyncStorage.getItem(NATIVE_TOKEN_KEY)) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function setNativeStoredToken(token) {
+  if (!isNativeMobileEnv()) return;
+  try {
+    await AsyncStorage.setItem(NATIVE_TOKEN_KEY, String(token || "").trim());
+  } catch {
+    // Best effort only.
+  }
+}
+
+async function clearNativeStoredToken() {
+  if (!isNativeMobileEnv()) return;
+  try {
+    await AsyncStorage.removeItem(NATIVE_TOKEN_KEY);
   } catch {
     // Best effort only.
   }
@@ -141,13 +176,48 @@ function buildPuterAuthHtml() {
 }
 
 export async function isPuterSignedIn() {
-  if (getBackendChatUrl()) return true;
-  return Boolean(getStoredToken());
+  if (getBackendChatUrl() && Platform.OS === "web") return true;
+  if (isBrowserEnv()) return Boolean(getStoredToken());
+  return Boolean(await getNativeStoredToken());
 }
 
 export async function signInToPuter() {
-  if (getBackendChatUrl()) {
+  if (getBackendChatUrl() && Platform.OS === "web") {
     return "backend-managed";
+  }
+
+  if (isNativeMobileEnv()) {
+    const existingToken = await getNativeStoredToken();
+    if (existingToken) {
+      return existingToken;
+    }
+
+    if (!BACKEND_URL) {
+      throw new Error("Missing AI backend URL for Puter mobile sign-in.");
+    }
+
+    const returnUrl = Linking.createURL("puter-auth");
+    const authUrl =
+      `${BACKEND_URL.replace(/\/$/, "")}/api/puter-mobile-auth` +
+      `?returnUrl=${encodeURIComponent(returnUrl)}`;
+
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, returnUrl);
+
+    if (result.type !== "success" || !result.url) {
+      throw new Error("Puter sign-in was cancelled or did not return to the app.");
+    }
+
+    const parsed = Linking.parse(result.url);
+    const status = String(parsed.queryParams?.status || "").trim();
+    const token = String(parsed.queryParams?.token || "").trim();
+    const message = String(parsed.queryParams?.message || "").trim();
+
+    if (status !== "success" || !token) {
+      throw new Error(message || "Puter sign-in did not return a usable token.");
+    }
+
+    await setNativeStoredToken(token);
+    return token;
   }
 
   if (!isBrowserEnv()) {
@@ -232,7 +302,7 @@ async function consumeNdjsonStream(response) {
 
 export async function chatWithPuter(prompt, options = {}) {
   const backendChatUrl = getBackendChatUrl();
-  if (backendChatUrl) {
+  if (backendChatUrl && Platform.OS === "web") {
     const response = await fetch(backendChatUrl, {
       method: "POST",
       headers: {
@@ -257,7 +327,9 @@ export async function chatWithPuter(prompt, options = {}) {
     return text;
   }
 
-  const authToken = getStoredToken() || (await signInToPuter());
+  const authToken = isBrowserEnv()
+    ? getStoredToken() || (await signInToPuter())
+    : (await getNativeStoredToken()) || (await signInToPuter());
 
   const response = await fetch(`${PUTER_API_ORIGIN}/drivers/call`, {
     method: "POST",
@@ -280,6 +352,13 @@ export async function chatWithPuter(prompt, options = {}) {
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      if (isBrowserEnv()) {
+        clearStoredAuth();
+      } else {
+        await clearNativeStoredToken();
+      }
+    }
     throw new Error(errorText || "Puter drivers/call request failed.");
   }
 
