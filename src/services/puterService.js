@@ -5,9 +5,15 @@ const DEFAULT_MODEL = "grok-4-fast";
 const TOKEN_KEY = "happy_state_puter_auth_token";
 const USER_KEY = "happy_state_puter_user";
 const POPUP_NAME = "HappyStatePuterAuth";
+const BACKEND_URL = String(process.env.EXPO_PUBLIC_AI_BACKEND_URL || "").trim();
 
 function isBrowserEnv() {
   return Platform.OS === "web" && typeof window !== "undefined";
+}
+
+function getBackendChatUrl() {
+  if (!BACKEND_URL) return "";
+  return `${BACKEND_URL.replace(/\/$/, "")}/api/grok-chat`;
 }
 
 function getStoredToken() {
@@ -135,10 +141,15 @@ function buildPuterAuthHtml() {
 }
 
 export async function isPuterSignedIn() {
+  if (getBackendChatUrl()) return true;
   return Boolean(getStoredToken());
 }
 
 export async function signInToPuter() {
+  if (getBackendChatUrl()) {
+    return "backend-managed";
+  }
+
   if (!isBrowserEnv()) {
     throw new Error("Puter authentication requires web environment.");
   }
@@ -220,6 +231,32 @@ async function consumeNdjsonStream(response) {
 }
 
 export async function chatWithPuter(prompt, options = {}) {
+  const backendChatUrl = getBackendChatUrl();
+  if (backendChatUrl) {
+    const response = await fetch(backendChatUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: [{ content: prompt }],
+        model: options.model || DEFAULT_MODEL,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "Backend Grok request failed.");
+    }
+
+    const payload = await response.json();
+    const text = String(payload?.text || "").trim();
+    if (!text) {
+      throw new Error("Backend Grok request returned an empty response.");
+    }
+    return text;
+  }
+
   const authToken = getStoredToken() || (await signInToPuter());
 
   const response = await fetch(`${PUTER_API_ORIGIN}/drivers/call`, {

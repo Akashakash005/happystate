@@ -1,0 +1,13 @@
+{
+  "name": "happystate-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node api/grok-chat.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5"
+  }
+}
