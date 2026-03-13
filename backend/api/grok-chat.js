@@ -68,17 +68,24 @@ export default async function handler(req, res) {
     return;
   }
 
-  const authToken = String(process.env.PUTER_AUTH_TOKEN || "").trim();
-  if (!authToken) {
-    res.status(500).json({ error: "Missing PUTER_AUTH_TOKEN on backend." });
-    return;
-  }
+  const backendAuthToken = String(process.env.PUTER_AUTH_TOKEN || "").trim();
+  let requestAuthToken = "";
+  let model = DEFAULT_MODEL;
+  let messages = [];
 
   try {
     const body =
       typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
-    const messages = Array.isArray(body.messages) ? body.messages : [];
-    const model = String(body.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+    requestAuthToken = String(body.authToken || "").trim();
+    const authToken = requestAuthToken || backendAuthToken;
+
+    if (!authToken) {
+      res.status(500).json({ error: "Missing Puter auth token on backend and request." });
+      return;
+    }
+
+    messages = Array.isArray(body.messages) ? body.messages : [];
+    model = String(body.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
 
     if (!messages.length) {
       res.status(400).json({ error: "messages array is required." });
@@ -112,11 +119,16 @@ export default async function handler(req, res) {
         provider: "puter",
         model,
         tokenPresent: Boolean(authToken),
+        tokenSource: requestAuthToken ? "request" : "backend",
         messageCount: messages.length,
         upstreamStatus: response.status,
         upstreamStatusText: response.statusText,
         upstreamBody: errorText || null,
         upstreamHeaders,
+        hint:
+          response.status === 403
+            ? "The Puter token was accepted by this backend call but forbidden by Puter upstream. The token may be expired, unauthorized for this model, or tied to a different environment/account."
+            : undefined,
       });
       return;
     }
@@ -127,7 +139,10 @@ export default async function handler(req, res) {
     res.status(500).json({
       error: error?.message || "Backend grok-chat request failed.",
       provider: "puter",
-      tokenPresent: Boolean(authToken),
+      model,
+      tokenPresent: Boolean(backendAuthToken),
+      tokenSource: requestAuthToken ? "request" : backendAuthToken ? "backend" : "none",
+      messageCount: messages.length,
     });
   }
 }
